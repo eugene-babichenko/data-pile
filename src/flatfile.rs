@@ -15,26 +15,11 @@
 //! A flatfile is opened with `mmap` and we rely on OS's mechanisms for caching
 //! pages, etc.
 
-use crate::Error;
-use memmap::{MmapMut, MmapOptions};
-use std::{
-    cell::UnsafeCell,
-    fs::{File, OpenOptions},
-    marker::Sync,
-    mem::size_of,
-    path::Path,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use crate::{Appender, Error};
+use std::{mem::size_of, path::Path};
 
 pub(crate) struct FlatFile {
-    file: File,
-    // This is used to trick the compiler so that we have parallel reads and
-    // writes. Unfortunately, this also makes `append` non-threadsafe.
-    mmap: UnsafeCell<MmapMut>,
-    // Atomic is used to ensure that we can have lock-free and memory-safe
-    // reads. Since this value is updated only after the write has finished it
-    // is safe to use it as the upper boundary for reads.
-    actual_size: AtomicUsize,
+    inner: Appender,
 }
 
 pub(crate) struct RawRecord<'a> {
@@ -53,80 +38,33 @@ impl FlatFile {
     ///   limits the size of the file. If the `map_size` is smaller than the
     ///   size of the file, an error will be returned.
     pub fn new<P: AsRef<Path>>(path: P, map_size: usize) -> Result<Self, Error> {
-        let path = path.as_ref();
-
-        let file = OpenOptions::new()
-            .read(true)
-            .append(true)
-            .create(true)
-            .open(path)
-            .map_err(|err| Error::FileOpen(path.to_path_buf(), err))?;
-
-        let actual_size = file
-            .metadata()
-            .map_err(|err| Error::FileOpen(path.to_path_buf(), err))?
-            .len() as usize;
-
-        if map_size < actual_size {
-            return Err(Error::MmapTooSmall);
-        }
-
-        let mmap = UnsafeCell::new(unsafe {
-            MmapOptions::new()
-                .len(map_size)
-                .map_mut(&file)
-                .map_err(|err| Error::Mmap(path.to_path_buf(), err))?
-        });
-
-        let actual_size = AtomicUsize::from(actual_size);
-
-        Ok(FlatFile {
-            file,
-            mmap,
-            actual_size,
-        })
+        Appender::new(path, map_size).map(|inner| FlatFile { inner })
     }
 
     /// Write an array of records to the drive. This function is not thread safe.
     pub fn append(&self, records: &[RawRecord]) -> Result<(), Error> {
-        let mmap = unsafe { self.mmap.get().as_mut().unwrap() };
-        let actual_size = self.actual_size.load(Ordering::Relaxed);
-
         let size_inc: usize = records
             .iter()
             .fold(0, |value, record| value + record.size());
 
-        let new_file_size = actual_size + size_inc;
-        if mmap.len() < new_file_size {
-            return Err(Error::MmapTooSmall);
-        }
+        self.inner.append(size_inc, move |mmap| {
+            let mut offset = 0;
+            for record in records {
+                mmap[offset..(offset + size_of::<u64>())]
+                    .copy_from_slice(&(record.key.len() as u64).to_le_bytes()[..]);
+                offset += size_of::<u64>();
 
-        self.file
-            .set_len(new_file_size as u64)
-            .map_err(Error::Write)?;
+                mmap[offset..(offset + size_of::<u64>())]
+                    .copy_from_slice(&(record.value.len() as u64).to_le_bytes()[..]);
+                offset += size_of::<u64>();
 
-        let mut offset = actual_size;
-        for record in records {
-            mmap[offset..(offset + size_of::<u64>())]
-                .copy_from_slice(&(record.key.len() as u64).to_le_bytes()[..]);
-            offset += size_of::<u64>();
+                mmap[offset..(offset + record.key.len())].copy_from_slice(&record.key);
+                offset += record.key.len();
 
-            mmap[offset..(offset + size_of::<u64>())]
-                .copy_from_slice(&(record.value.len() as u64).to_le_bytes()[..]);
-            offset += size_of::<u64>();
-
-            mmap[offset..(offset + record.key.len())].copy_from_slice(&record.key);
-            offset += record.key.len();
-
-            mmap[offset..(offset + record.value.len())].copy_from_slice(&record.value);
-            offset += record.value.len();
-        }
-
-        mmap.flush().map_err(Error::Write)?;
-
-        self.actual_size.store(new_file_size, Ordering::Relaxed);
-
-        Ok(())
+                mmap[offset..(offset + record.value.len())].copy_from_slice(&record.value);
+                offset += record.value.len();
+            }
+        })
     }
 
     /// Get the value at the given `offset`. If the `offset` is outside of the
@@ -134,44 +72,45 @@ impl FlatFile {
     /// a key-value record and the physical size of this record is returned.
     /// Note that this function do not check if the given `offset` is the start
     /// of an actual record, so you should be careful when using it.
-    pub fn get_record_at_offset(&self, mut offset: usize) -> Option<(RawRecord, usize)> {
-        let mmap = unsafe { self.mmap.get().as_ref().unwrap() };
-        let actual_size = self.actual_size.load(Ordering::Relaxed);
+    pub fn get_record_at_offset(&self, offset: usize) -> Option<(RawRecord, usize)> {
+        self.inner.get_data(move |mmap| {
+            let mut offset = offset;
 
-        if actual_size < offset + size_of::<u64>() * 2 {
-            return None;
-        }
+            let actual_size = mmap.len();
 
-        let end = offset + size_of::<u64>();
-        let mut key_length_bytes = [0u8; size_of::<u64>()];
-        key_length_bytes.copy_from_slice(&mmap[offset..end]);
-        let key_length = u64::from_le_bytes(key_length_bytes) as usize;
-        offset += size_of::<u64>();
+            if actual_size < offset + size_of::<u64>() * 2 {
+                return None;
+            }
 
-        let end = offset + size_of::<u64>();
-        let mut value_length_bytes = [0u8; size_of::<u64>()];
-        value_length_bytes.copy_from_slice(&mmap[offset..end]);
-        let value_length = u64::from_le_bytes(value_length_bytes) as usize;
-        offset += size_of::<u64>();
+            let end = offset + size_of::<u64>();
+            let mut key_length_bytes = [0u8; size_of::<u64>()];
+            key_length_bytes.copy_from_slice(&mmap[offset..end]);
+            let key_length = u64::from_le_bytes(key_length_bytes) as usize;
+            offset += size_of::<u64>();
 
-        if actual_size < offset + key_length + value_length {
-            return None;
-        }
+            let end = offset + size_of::<u64>();
+            let mut value_length_bytes = [0u8; size_of::<u64>()];
+            value_length_bytes.copy_from_slice(&mmap[offset..end]);
+            let value_length = u64::from_le_bytes(value_length_bytes) as usize;
+            offset += size_of::<u64>();
 
-        let end = offset + key_length;
-        let key = &mmap[offset..end];
-        offset += key_length;
+            if actual_size < offset + key_length + value_length {
+                return None;
+            }
 
-        let end = offset + value_length;
-        let value = &mmap[offset..end];
+            let end = offset + key_length;
+            let key = &mmap[offset..end];
+            offset += key_length;
 
-        let record_size = value_length + key_length + size_of::<u64>() * 2;
+            let end = offset + value_length;
+            let value = &mmap[offset..end];
 
-        Some((RawRecord { key, value }, record_size))
+            let record_size = value_length + key_length + size_of::<u64>() * 2;
+
+            Some((RawRecord { key, value }, record_size))
+        })
     }
 }
-
-unsafe impl Sync for FlatFile {}
 
 impl<'a> RawRecord<'a> {
     pub fn new(key: &'a [u8], value: &'a [u8]) -> RawRecord<'a> {
