@@ -7,18 +7,23 @@ use std::{
     fs::{File, OpenOptions},
     marker::Sync,
     path::Path,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Mutex,
+    },
 };
 
 pub(crate) struct Appender {
     file: File,
     // This is used to trick the compiler so that we have parallel reads and
-    // writes. Unfortunately, this also makes `append` non-threadsafe.
+    // writes.
     mmap: UnsafeCell<MmapMut>,
     // Atomic is used to ensure that we can have lock-free and memory-safe
     // reads. Since this value is updated only after the write has finished it
     // is safe to use it as the upper boundary for reads.
     actual_size: AtomicUsize,
+    // Used to protect from simultaneous writes.
+    write_mutex: Mutex<()>,
 }
 
 impl Appender {
@@ -58,20 +63,25 @@ impl Appender {
 
         let actual_size = AtomicUsize::from(actual_size);
 
+        let write_mutex = Mutex::from(());
+
         Ok(Self {
             file,
             mmap,
             actual_size,
+            write_mutex,
         })
     }
 
     /// Append data to the file. The mutable pointer to the new data location is
-    /// given to `f` which should write the data. This function is not thread
-    /// safe.
+    /// given to `f` which should write the data. This function will block if
+    /// another write is in progress.
     pub fn append<F>(&self, size_inc: usize, f: F) -> Result<(), Error>
     where
         F: Fn(&mut [u8]),
     {
+        let _guard = self.write_mutex.lock().unwrap();
+
         let mmap = unsafe { self.mmap.get().as_mut().unwrap() };
         let actual_size = self.actual_size.load(Ordering::Relaxed);
 

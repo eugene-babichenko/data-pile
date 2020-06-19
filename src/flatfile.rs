@@ -41,7 +41,8 @@ impl FlatFile {
         Appender::new(path, map_size).map(|inner| FlatFile { inner })
     }
 
-    /// Write an array of records to the drive. This function is not thread safe.
+    /// Write an array of records to the drive. This function will block if
+    /// another write is still in progress.
     pub fn append(&self, records: &[RawRecord]) -> Result<(), Error> {
         let size_inc: usize = records
             .iter()
