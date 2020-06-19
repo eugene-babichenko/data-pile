@@ -5,3 +5,9 @@ authors = ["Yevhenii Babichenko <eugene.babichenko@protonmail.com>"]
 edition = "2018"
 
 [dependencies]
+memmap = "0.7.0"
+
+[dev-dependencies]
+tempfile = "3.1"
+quickcheck = "0.9"
+quickcheck_macros = "0.9"
