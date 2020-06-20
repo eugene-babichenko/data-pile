@@ -128,3 +128,92 @@ impl Appender {
 }
 
 unsafe impl Sync for Appender {}
+
+#[cfg(test)]
+mod tests {
+    use super::Appender;
+    use crate::Error;
+    use std::sync::Arc;
+
+    #[quickcheck]
+    fn test_read_write(data1: Vec<u8>, data2: Vec<u8>) {
+        if data1.is_empty() || data2.is_empty() {
+            return;
+        }
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+
+        let map_size = data1.len();
+        let flatfile = Appender::new(tmp.path(), map_size).unwrap();
+        flatfile
+            .append(data1.len(), |mmap| mmap.copy_from_slice(data1.as_ref()))
+            .unwrap();
+
+        let actual_data = flatfile.get_data(|mmap| Some(mmap)).unwrap();
+        assert_eq!(data1, actual_data);
+
+        let result = flatfile.append(data2.len(), |mmap| mmap.copy_from_slice(data2.as_ref()));
+        assert!(matches!(result, Err(Error::MmapTooSmall)));
+    }
+
+    #[quickcheck]
+    fn write_two_times_success(mut data1: Vec<u8>, data2: Vec<u8>) {
+        if data1.is_empty() || data2.is_empty() {
+            return;
+        }
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+
+        let map_size = data1.len() + data2.len();
+        let flatfile = Appender::new(tmp.path(), map_size).unwrap();
+        flatfile
+            .append(data1.len(), |mmap| mmap.copy_from_slice(data1.as_ref()))
+            .unwrap();
+
+        let actual_data = flatfile.get_data(|mmap| Some(mmap)).unwrap();
+        assert_eq!(data1, actual_data);
+
+        flatfile
+            .append(data2.len(), |mmap| mmap.copy_from_slice(&data2))
+            .unwrap();
+
+        let actual_data = flatfile.get_data(|mmap| Some(mmap)).unwrap();
+        data1.extend_from_slice(&data2);
+        assert_eq!(data1, actual_data);
+    }
+
+    #[quickcheck]
+    fn parallel_read_write(data1: Vec<u8>, data2: Vec<u8>) {
+        if data1.is_empty() || data2.is_empty() {
+            return;
+        }
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+
+        let map_size = data1.len() + data2.len();
+        let flatfile = Arc::new(Appender::new(tmp.path(), map_size).unwrap());
+        flatfile
+            .append(data1.len(), |mmap| mmap.copy_from_slice(data1.as_ref()))
+            .unwrap();
+
+        let write_flatfile = flatfile.clone();
+        let write_expected = {
+            let mut data = data1.clone();
+            data.extend_from_slice(&data2);
+            data
+        };
+        let write_thread = std::thread::spawn(move || {
+            write_flatfile
+                .append(data2.len(), |mmap| mmap.copy_from_slice(data2.as_ref()))
+                .unwrap();
+
+            let actual_data = write_flatfile.get_data(|mmap| Some(mmap)).unwrap();
+            assert_eq!(write_expected, actual_data);
+        });
+
+        let actual_data = flatfile.get_data(|mmap| Some(mmap)).unwrap();
+        assert_eq!(data1, actual_data);
+
+        write_thread.join().unwrap();
+    }
+}

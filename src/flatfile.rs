@@ -134,9 +134,7 @@ impl<'a> RawRecord<'a> {
 #[cfg(test)]
 mod tests {
     use super::{FlatFile, RawRecord};
-    use crate::Error;
     use quickcheck::{Arbitrary, Gen};
-    use std::sync::Arc;
 
     #[derive(Debug, Clone)]
     struct TestRecord {
@@ -167,8 +165,8 @@ mod tests {
     }
 
     #[quickcheck]
-    fn test_read_write(records: Vec<TestRecord>, records_next: Vec<TestRecord>) {
-        if records.is_empty() || records_next.is_empty() {
+    fn test_read_write(records: Vec<TestRecord>) {
+        if records.is_empty() {
             return;
         }
 
@@ -188,94 +186,5 @@ mod tests {
 
             offset += size;
         }
-
-        let result = flatfile.get_record_at_offset(map_size + 1);
-        assert!(result.is_none());
-
-        let (raw_records, _) = convert_records(&records_next);
-        let result = flatfile.append(&raw_records);
-        assert!(matches!(result, Err(Error::MmapTooSmall)));
-    }
-
-    #[quickcheck]
-    fn write_two_times_success(records: Vec<TestRecord>, records_next: Vec<TestRecord>) {
-        if records.is_empty() || records_next.is_empty() {
-            return;
-        }
-
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-
-        let (raw_records, map_size) = convert_records(&records);
-        let (raw_records_next, map_size_next) = convert_records(&records_next);
-        let map_size = map_size + map_size_next;
-
-        let flatfile = FlatFile::new(tmp.path(), map_size).unwrap();
-        flatfile.append(&raw_records).unwrap();
-
-        let mut offset = 0;
-        for record in raw_records.iter() {
-            let (drive_record, size) = flatfile.get_record_at_offset(offset).unwrap();
-
-            assert_eq!(record.key, drive_record.key());
-            assert_eq!(record.value, drive_record.value());
-
-            offset += size;
-        }
-
-        flatfile.append(&raw_records_next).unwrap();
-
-        for record in raw_records_next.iter() {
-            let (drive_record, size) = flatfile.get_record_at_offset(offset).unwrap();
-
-            assert_eq!(record.key, drive_record.key());
-            assert_eq!(record.value, drive_record.value());
-
-            offset += size;
-        }
-    }
-
-    #[quickcheck]
-    fn parallel_read_write(records: Vec<TestRecord>, records_next: Vec<TestRecord>) {
-        if records.is_empty() || records_next.is_empty() {
-            return;
-        }
-
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-
-        let (raw_records, map_size_first) = convert_records(&records);
-        let (_, map_size_next) = convert_records(&records_next);
-        let map_size = map_size_first + map_size_next;
-
-        let flatfile = Arc::new(FlatFile::new(tmp.path(), map_size).unwrap());
-        flatfile.append(&raw_records).unwrap();
-
-        let flatfile_write_copy = flatfile.clone();
-        let write_thread = std::thread::spawn(move || {
-            let (raw_records, _) = convert_records(&records_next);
-            flatfile_write_copy.append(&raw_records).unwrap();
-
-            let mut offset = map_size_first;
-            for record in raw_records.iter() {
-                let (drive_record, size) =
-                    flatfile_write_copy.get_record_at_offset(offset).unwrap();
-
-                assert_eq!(record.key, drive_record.key());
-                assert_eq!(record.value, drive_record.value());
-
-                offset += size;
-            }
-        });
-
-        let mut offset = 0;
-        for record in raw_records.iter() {
-            let (drive_record, size) = flatfile.get_record_at_offset(offset).unwrap();
-
-            assert_eq!(record.key, drive_record.key());
-            assert_eq!(record.value, drive_record.value());
-
-            offset += size;
-        }
-
-        write_thread.join().unwrap();
     }
 }
