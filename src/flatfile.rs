@@ -48,22 +48,21 @@ impl FlatFile {
             .iter()
             .fold(0, |value, record| value + record.size());
 
-        self.inner.append(size_inc, move |mmap| {
-            let mut offset = 0;
+        self.inner.append(size_inc, move |mut mmap| {
             for record in records {
-                mmap[offset..(offset + size_of::<u64>())]
+                mmap[..size_of::<u64>()]
                     .copy_from_slice(&(record.key.len() as u64).to_le_bytes()[..]);
-                offset += size_of::<u64>();
+                mmap = &mut mmap[size_of::<u64>()..];
 
-                mmap[offset..(offset + size_of::<u64>())]
+                mmap[..size_of::<u64>()]
                     .copy_from_slice(&(record.value.len() as u64).to_le_bytes()[..]);
-                offset += size_of::<u64>();
+                mmap = &mut mmap[size_of::<u64>()..];
 
-                mmap[offset..(offset + record.key.len())].copy_from_slice(&record.key);
-                offset += record.key.len();
+                mmap[..record.key.len()].copy_from_slice(&record.key);
+                mmap = &mut mmap[record.key.len()..];
 
-                mmap[offset..(offset + record.value.len())].copy_from_slice(&record.value);
-                offset += record.value.len();
+                mmap[..record.value.len()].copy_from_slice(&record.value);
+                mmap = &mut mmap[record.value.len()..];
             }
         })
     }
@@ -74,37 +73,31 @@ impl FlatFile {
     /// Note that this function do not check if the given `offset` is the start
     /// of an actual record, so you should be careful when using it.
     pub fn get_record_at_offset(&self, offset: usize) -> Option<(RawRecord, usize)> {
-        self.inner.get_data(move |mmap| {
-            let mut offset = offset;
-
-            let actual_size = mmap.len();
-
-            if actual_size < offset + size_of::<u64>() * 2 {
+        self.inner.get_data(move |mut mmap| {
+            if mmap.len() < offset + size_of::<u64>() * 2 {
                 return None;
             }
 
-            let end = offset + size_of::<u64>();
+            mmap = &mmap[offset..];
+
             let mut key_length_bytes = [0u8; size_of::<u64>()];
-            key_length_bytes.copy_from_slice(&mmap[offset..end]);
+            key_length_bytes.copy_from_slice(&mmap[..size_of::<u64>()]);
             let key_length = u64::from_le_bytes(key_length_bytes) as usize;
-            offset += size_of::<u64>();
+            mmap = &mmap[size_of::<u64>()..];
 
-            let end = offset + size_of::<u64>();
             let mut value_length_bytes = [0u8; size_of::<u64>()];
-            value_length_bytes.copy_from_slice(&mmap[offset..end]);
+            value_length_bytes.copy_from_slice(&mmap[..size_of::<u64>()]);
             let value_length = u64::from_le_bytes(value_length_bytes) as usize;
-            offset += size_of::<u64>();
+            mmap = &mmap[size_of::<u64>()..];
 
-            if actual_size < offset + key_length + value_length {
+            if mmap.len() < key_length + value_length {
                 return None;
             }
 
-            let end = offset + key_length;
-            let key = &mmap[offset..end];
-            offset += key_length;
+            let key = &mmap[..key_length];
+            mmap = &mmap[key_length..];
 
-            let end = offset + value_length;
-            let value = &mmap[offset..end];
+            let value = &mmap[..value_length];
 
             let record_size = value_length + key_length + size_of::<u64>() * 2;
 
