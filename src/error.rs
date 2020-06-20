@@ -10,6 +10,8 @@ pub enum Error {
     MmapTooSmall,
     /// Error while extending a file.
     Write(io::Error),
+    /// Database path already exists and does not point to a directory
+    PathNotDir,
 }
 
 impl error::Error for Error {
@@ -19,6 +21,7 @@ impl error::Error for Error {
             Error::Mmap(_, source) => Some(source),
             Error::MmapTooSmall => None,
             Error::Write(source) => Some(source),
+            Error::PathNotDir => None,
         }
     }
 }
@@ -30,6 +33,10 @@ impl fmt::Display for Error {
             Error::Mmap(path, _) => write!(f, "memory map failed for file `{}`", path.display()),
             Error::MmapTooSmall => write!(f, "the map size is too little to write new records"),
             Error::Write(_) => write!(f, "failed to write the file"),
+            Error::PathNotDir => write!(
+                f,
+                "database path already exists and does not point to a directory"
+            ),
         }
     }
 }

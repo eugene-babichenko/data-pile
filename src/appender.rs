@@ -125,6 +125,10 @@ impl Appender {
 
         f(&mmap[0..actual_size])
     }
+
+    pub fn size(&self) -> usize {
+        self.actual_size.load(Ordering::Relaxed)
+    }
 }
 
 unsafe impl Sync for Appender {}
