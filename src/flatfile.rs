@@ -1,20 +1,20 @@
-//! Flatfiles are the main database files that hold all keys and data.
-//!
-//! Records are stored without any additional spaces. The file does not hold any
-//! additional data.
-//!
-//! A flatfile is opened with `mmap` and we rely on OS's mechanisms for caching
-//! pages, etc.
+use crate::{Appender, Error, Record, RecordSerializer};
+use std::{marker::PhantomData, path::Path};
 
-use crate::{Appender, Error, Record};
-use std::path::Path;
-
-pub(crate) struct FlatFile {
+/// Flatfiles are the main database files that hold all keys and data.
+///
+/// Records are stored without any additional spaces. The file does not hold any
+/// additional data.
+///
+/// A flatfile is opened with `mmap` and we rely on OS's mechanisms for caching
+/// pages, etc.
+pub(crate) struct FlatFile<R: RecordSerializer> {
     inner: Appender,
+    pd: PhantomData<R>,
 }
 
 /// Low-level interface to flatfiles.
-impl FlatFile {
+impl<R: RecordSerializer> FlatFile<R> {
     /// Open a flatfile.
     ///
     /// # Arguments
@@ -24,7 +24,10 @@ impl FlatFile {
     ///   limits the size of the file. If the `map_size` is smaller than the
     ///   size of the file, an error will be returned.
     pub fn new<P: AsRef<Path>>(path: P, map_size: usize) -> Result<Self, Error> {
-        Appender::new(path, map_size).map(|inner| FlatFile { inner })
+        Appender::new(path, map_size).map(|inner| FlatFile {
+            inner,
+            pd: PhantomData,
+        })
     }
 
     /// Write an array of records to the drive. This function will block if
@@ -32,12 +35,12 @@ impl FlatFile {
     pub fn append(&self, records: &[Record]) -> Result<(), Error> {
         let size_inc: usize = records
             .iter()
-            .fold(0, |value, record| value + record.size());
+            .fold(0, |value, record| value + R::size(&record));
 
         self.inner.append(size_inc, move |mut mmap| {
             for record in records {
-                record.serialize(&mut mmap);
-                mmap = &mut mmap[record.size()..];
+                R::serialize(record, &mut mmap);
+                mmap = &mut mmap[R::size(&record)..];
             }
         })
     }
@@ -49,7 +52,7 @@ impl FlatFile {
     /// using it.
     pub fn get_record_at_offset(&self, offset: usize) -> Option<Record> {
         self.inner
-            .get_data(move |mmap| Record::deserialize(&mmap[offset..]))
+            .get_data(move |mmap| R::deserialize(&mmap[offset..]))
     }
 
     pub fn len(&self) -> usize {
@@ -60,7 +63,10 @@ impl FlatFile {
 #[cfg(test)]
 mod tests {
     use super::{FlatFile, Record};
-    use crate::testutils::TestData;
+    use crate::{
+        record::{BasicRecordSerializer, RecordSerializer},
+        testutils::TestData,
+    };
 
     fn convert_records(records: &[TestData]) -> (Vec<Record>, usize) {
         let raw_records: Vec<_> = records
@@ -68,9 +74,9 @@ mod tests {
             .map(|record| Record::new(&record.key, &record.value))
             .collect();
 
-        let map_size: usize = raw_records
-            .iter()
-            .fold(0, |size, record| size + record.size());
+        let map_size: usize = raw_records.iter().fold(0, |size, record| {
+            size + BasicRecordSerializer::size(&record)
+        });
 
         (raw_records, map_size)
     }
@@ -85,7 +91,7 @@ mod tests {
 
         let (raw_records, map_size) = convert_records(&records);
 
-        let flatfile = FlatFile::new(tmp.path(), map_size).unwrap();
+        let flatfile = FlatFile::<BasicRecordSerializer>::new(tmp.path(), map_size).unwrap();
         flatfile.append(&raw_records).unwrap();
 
         let mut offset = 0;
@@ -95,7 +101,7 @@ mod tests {
             assert_eq!(record.key(), drive_record.key());
             assert_eq!(record.value(), drive_record.value());
 
-            offset += record.size();
+            offset += BasicRecordSerializer::size(&record);
         }
     }
 }

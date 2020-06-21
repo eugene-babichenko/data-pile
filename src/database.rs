@@ -1,4 +1,4 @@
-use crate::{flatfile::FlatFile, seqno::SeqNoIndex, Error, Record};
+use crate::{flatfile::FlatFile, seqno::SeqNoIndex, Error, Record, RecordSerializer};
 use std::path::Path;
 
 // 4 GiB
@@ -12,8 +12,8 @@ pub struct DatabaseBuilder {
     seqno_index_map_size: usize,
 }
 
-pub struct Database {
-    flatfile: FlatFile,
+pub struct Database<R: RecordSerializer> {
+    flatfile: FlatFile<R>,
     seqno_index: SeqNoIndex,
 }
 
@@ -43,7 +43,7 @@ impl DatabaseBuilder {
     }
 
     /// Open the database. Will create it if not exists.
-    pub fn open<P: AsRef<Path>>(self, path: P) -> Result<Database, Error> {
+    pub fn open<R: RecordSerializer, P: AsRef<Path>>(self, path: P) -> Result<Database<R>, Error> {
         let path = path.as_ref();
 
         if !path.is_dir() {
@@ -67,7 +67,7 @@ impl DatabaseBuilder {
     }
 }
 
-impl Database {
+impl<R: RecordSerializer> Database<R> {
     /// Write an array of records to the database. This function will block if
     /// another write is still in progress.
     pub fn append(&self, records: &[Record]) -> Result<(), Error> {
@@ -79,7 +79,7 @@ impl Database {
             (initial_size, Vec::with_capacity(records.len())),
             |(offset, mut update), record| {
                 update.push(offset as u64);
-                (offset + record.size(), update)
+                (offset + R::size(&record), update)
             },
         );
 
@@ -100,7 +100,7 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::DatabaseBuilder;
-    use crate::{testutils::TestData, Record};
+    use crate::{record::BasicRecordSerializer, testutils::TestData, Record, RecordSerializer};
 
     #[quickcheck]
     fn read_write(data: Vec<TestData>) {
@@ -114,13 +114,15 @@ mod tests {
             .iter()
             .map(|data| Record::new(&data.key, &data.value))
             .collect();
-        let flatfile_size = records.iter().fold(0, |size, record| size + record.size());
+        let flatfile_size = records.iter().fold(0, |size, record| {
+            size + BasicRecordSerializer::size(&record)
+        });
         let seqno_index_size = records.len() * std::mem::size_of::<u64>();
 
         let db = DatabaseBuilder::new()
             .flatfile_map_size(flatfile_size)
             .seqno_index_map_size(seqno_index_size)
-            .open(tmp.path())
+            .open::<BasicRecordSerializer, _>(tmp.path())
             .unwrap();
 
         db.append(&records).unwrap();

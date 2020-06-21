@@ -14,4 +14,4 @@ mod testutils;
 use appender::Appender;
 pub use database::{Database, DatabaseBuilder};
 pub use error::Error;
-pub use record::Record;
+pub use record::{BasicRecordSerializer, Record, RecordSerializer};
