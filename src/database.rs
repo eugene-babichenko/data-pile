@@ -107,7 +107,9 @@ impl<R: RecordSerializer> Database<R> {
 #[cfg(test)]
 mod tests {
     use super::DatabaseBuilder;
-    use crate::{record::BasicRecordSerializer, testutils::TestData, Record, RecordSerializer};
+    use crate::{
+        serialization::BasicRecordSerializer, testutils::TestData, Record, RecordSerializer,
+    };
 
     #[quickcheck]
     fn read_write(data: Vec<TestData>) {

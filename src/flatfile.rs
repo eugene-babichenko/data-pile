@@ -66,7 +66,7 @@ impl FlatFile {
 mod tests {
     use super::{FlatFile, Record};
     use crate::{
-        record::{BasicRecordSerializer, RecordSerializer},
+        serialization::{BasicRecordSerializer, RecordSerializer},
         testutils::TestData,
     };
 
