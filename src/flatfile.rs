@@ -1,5 +1,5 @@
 use crate::{Appender, Error, Record, RecordSerializer};
-use std::{marker::PhantomData, path::Path};
+use std::path::Path;
 
 /// Flatfiles are the main database files that hold all keys and data.
 ///
@@ -8,13 +8,12 @@ use std::{marker::PhantomData, path::Path};
 ///
 /// A flatfile is opened with `mmap` and we rely on OS's mechanisms for caching
 /// pages, etc.
-pub(crate) struct FlatFile<R: RecordSerializer> {
+pub(crate) struct FlatFile {
     inner: Appender,
-    pd: PhantomData<R>,
 }
 
 /// Low-level interface to flatfiles.
-impl<R: RecordSerializer> FlatFile<R> {
+impl FlatFile {
     /// Open a flatfile.
     ///
     /// # Arguments
@@ -24,23 +23,23 @@ impl<R: RecordSerializer> FlatFile<R> {
     ///   limits the size of the file. If the `map_size` is smaller than the
     ///   size of the file, an error will be returned.
     pub fn new<P: AsRef<Path>>(path: P, map_size: usize) -> Result<Self, Error> {
-        Appender::new(path, map_size).map(|inner| FlatFile {
-            inner,
-            pd: PhantomData,
-        })
+        Appender::new(path, map_size).map(|inner| FlatFile { inner })
     }
 
     /// Write an array of records to the drive. This function will block if
     /// another write is still in progress.
-    pub fn append(&self, records: &[Record]) -> Result<(), Error> {
+    pub fn append<R>(&self, serializer: R, records: &[Record]) -> Result<(), Error>
+    where
+        R: RecordSerializer,
+    {
         let size_inc: usize = records
             .iter()
-            .fold(0, |value, record| value + R::size(&record));
+            .fold(0, |value, record| value + serializer.size(&record));
 
         self.inner.append(size_inc, move |mut mmap| {
             for record in records {
-                R::serialize(record, &mut mmap);
-                mmap = &mut mmap[R::size(&record)..];
+                serializer.serialize(record, &mut mmap);
+                mmap = &mut mmap[serializer.size(&record)..];
             }
         })
     }
@@ -50,9 +49,12 @@ impl<R: RecordSerializer> FlatFile<R> {
     /// record is returned. Note that this function do not check if the given
     /// `offset` is the start of an actual record, so you should be careful when
     /// using it.
-    pub fn get_record_at_offset(&self, offset: usize) -> Option<Record> {
+    pub fn get_record_at_offset<R>(&self, serializer: R, offset: usize) -> Option<Record>
+    where
+        R: RecordSerializer,
+    {
         self.inner
-            .get_data(move |mmap| R::deserialize(&mmap[offset..]))
+            .get_data(move |mmap| serializer.deserialize(&mmap[offset..]))
     }
 
     pub fn len(&self) -> usize {
@@ -74,9 +76,9 @@ mod tests {
             .map(|record| Record::new(&record.key, &record.value))
             .collect();
 
-        let map_size: usize = raw_records.iter().fold(0, |size, record| {
-            size + BasicRecordSerializer::size(&record)
-        });
+        let map_size: usize = raw_records
+            .iter()
+            .fold(0, |size, record| size + BasicRecordSerializer.size(&record));
 
         (raw_records, map_size)
     }
@@ -91,17 +93,21 @@ mod tests {
 
         let (raw_records, map_size) = convert_records(&records);
 
-        let flatfile = FlatFile::<BasicRecordSerializer>::new(tmp.path(), map_size).unwrap();
-        flatfile.append(&raw_records).unwrap();
+        let flatfile = FlatFile::new(tmp.path(), map_size).unwrap();
+        flatfile
+            .append(BasicRecordSerializer, &raw_records)
+            .unwrap();
 
         let mut offset = 0;
         for record in raw_records.iter() {
-            let drive_record = flatfile.get_record_at_offset(offset).unwrap();
+            let drive_record = flatfile
+                .get_record_at_offset(BasicRecordSerializer, offset)
+                .unwrap();
 
             assert_eq!(record.key(), drive_record.key());
             assert_eq!(record.value(), drive_record.value());
 
-            offset += BasicRecordSerializer::size(&record);
+            offset += BasicRecordSerializer.size(&record);
         }
     }
 }

@@ -13,8 +13,9 @@ pub struct DatabaseBuilder {
 }
 
 pub struct Database<R: RecordSerializer> {
-    flatfile: FlatFile<R>,
+    flatfile: FlatFile,
     seqno_index: SeqNoIndex,
+    serializer: R,
 }
 
 impl DatabaseBuilder {
@@ -43,7 +44,11 @@ impl DatabaseBuilder {
     }
 
     /// Open the database. Will create it if not exists.
-    pub fn open<R: RecordSerializer, P: AsRef<Path>>(self, path: P) -> Result<Database<R>, Error> {
+    pub fn open<P, R>(self, path: P, serializer: R) -> Result<Database<R>, Error>
+    where
+        P: AsRef<Path>,
+        R: RecordSerializer,
+    {
         let path = path.as_ref();
 
         if !path.is_dir() {
@@ -63,6 +68,7 @@ impl DatabaseBuilder {
         Ok(Database {
             flatfile,
             seqno_index,
+            serializer,
         })
     }
 }
@@ -73,13 +79,13 @@ impl<R: RecordSerializer> Database<R> {
     pub fn append(&self, records: &[Record]) -> Result<(), Error> {
         let initial_size = self.flatfile.len();
 
-        self.flatfile.append(records)?;
+        self.flatfile.append(&self.serializer, records)?;
 
         let (_, seqno_index_update) = records.iter().fold(
             (initial_size, Vec::with_capacity(records.len())),
             |(offset, mut update), record| {
                 update.push(offset as u64);
-                (offset + R::size(&record), update)
+                (offset + self.serializer.size(&record), update)
             },
         );
 
@@ -93,7 +99,8 @@ impl<R: RecordSerializer> Database<R> {
     /// Get a record by its sequential number.
     pub fn get_by_seqno(&self, seqno: usize) -> Option<Record> {
         let offset = self.seqno_index.get_pointer_to_value(seqno)?;
-        self.flatfile.get_record_at_offset(offset as usize)
+        self.flatfile
+            .get_record_at_offset(&self.serializer, offset as usize)
     }
 }
 
@@ -114,15 +121,15 @@ mod tests {
             .iter()
             .map(|data| Record::new(&data.key, &data.value))
             .collect();
-        let flatfile_size = records.iter().fold(0, |size, record| {
-            size + BasicRecordSerializer::size(&record)
-        });
+        let flatfile_size = records
+            .iter()
+            .fold(0, |size, record| size + BasicRecordSerializer.size(&record));
         let seqno_index_size = records.len() * std::mem::size_of::<u64>();
 
         let db = DatabaseBuilder::new()
             .flatfile_map_size(flatfile_size)
             .seqno_index_map_size(seqno_index_size)
-            .open::<BasicRecordSerializer, _>(tmp.path())
+            .open(tmp.path(), BasicRecordSerializer)
             .unwrap();
 
         db.append(&records).unwrap();
