@@ -1,4 +1,4 @@
-use crate::{flatfile::FlatFile, seqno::SeqNoIndex, Error, Record, RecordSerializer};
+use crate::{flatfile::FlatFile, seqno::SeqNoIndex, Error, Record, RecordSerializer, SeqNoIter};
 use std::{path::Path, sync::Arc};
 
 // 4 GiB
@@ -104,6 +104,17 @@ impl<R: RecordSerializer + Clone> Database<R> {
         self.flatfile
             .get_record_at_offset(&self.serializer, offset as usize)
     }
+
+    /// Iterate records in the order they were added starting form the given
+    /// sequential number.
+    pub fn iter_from_seqno(&self, seqno: usize) -> Option<SeqNoIter<R>> {
+        let offset = self.seqno_index.get_pointer_to_value(seqno)? as usize;
+        Some(SeqNoIter::new(
+            self.flatfile.clone(),
+            self.serializer.clone(),
+            offset,
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -143,5 +154,15 @@ mod tests {
             assert_eq!(records[i].key(), record.key());
             assert_eq!(records[i].value(), record.value());
         }
+
+        let mut iter = db.iter_from_seqno(0).unwrap();
+        let mut count = 0;
+
+        while let Some(record) = iter.next() {
+            assert_eq!(records[count].key(), record.key());
+            assert_eq!(records[count].value(), record.value());
+            count += 1;
+        }
+        assert_eq!(count, records.len());
     }
 }
