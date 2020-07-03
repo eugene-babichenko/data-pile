@@ -1,4 +1,6 @@
-use crate::{flatfile::FlatFile, seqno::SeqNoIndex, Error, Record, RecordSerializer, SeqNoIter};
+use crate::{
+    flatfile::FlatFile, index::Index, seqno::SeqNoIndex, Error, Record, RecordSerializer, SeqNoIter,
+};
 use std::{path::Path, sync::Arc};
 
 // 4 GiB
@@ -16,6 +18,7 @@ pub struct DatabaseBuilder {
 pub struct Database<R: RecordSerializer + Clone> {
     flatfile: Arc<FlatFile>,
     seqno_index: Arc<SeqNoIndex>,
+    index: Index<R>,
     serializer: R,
 }
 
@@ -69,9 +72,12 @@ impl DatabaseBuilder {
             self.seqno_index_map_size,
         )?);
 
+        let index = Index::new(flatfile.clone(), serializer.clone());
+
         Ok(Database {
             flatfile,
             seqno_index,
+            index,
             serializer,
         })
     }
@@ -85,17 +91,24 @@ impl<R: RecordSerializer + Clone> Database<R> {
 
         self.flatfile.append(&self.serializer, records)?;
 
-        let (_, seqno_index_update) = records.iter().fold(
-            (initial_size, Vec::with_capacity(records.len())),
-            |(offset, mut update), record| {
-                update.push(offset as u64);
-                (offset + self.serializer.size(&record), update)
-            },
-        );
+        let mut seqno_index_update = Vec::with_capacity(records.len());
+        let mut offset = initial_size;
+
+        for record in records.iter() {
+            seqno_index_update.push(offset as u64);
+            self.index.put(record.key(), offset);
+            offset += self.serializer.size(record);
+        }
 
         self.seqno_index.append(&seqno_index_update)?;
 
         Ok(())
+    }
+
+    /// Get a record by its key.
+    pub fn get(&self, key: &[u8]) -> Option<Record> {
+        let offset = self.index.get(key)?;
+        self.flatfile.get_record_at_offset(&self.serializer, offset)
     }
 
     /// Get a record by its sequential number.
@@ -125,10 +138,13 @@ mod tests {
     };
 
     #[quickcheck]
-    fn read_write(data: Vec<TestData>) {
+    fn read_write(mut data: Vec<TestData>) {
         if data.is_empty() {
             return;
         }
+
+        data.sort_by_key(|record| record.key.to_owned());
+        data.dedup_by_key(|record| record.key.to_owned());
 
         let tmp = tempfile::tempdir().unwrap();
 
@@ -151,6 +167,12 @@ mod tests {
 
         for i in 0..records.len() {
             let record = db.get_by_seqno(i).unwrap();
+            assert_eq!(records[i].key(), record.key());
+            assert_eq!(records[i].value(), record.value());
+        }
+
+        for i in 0..records.len() {
+            let record = db.get(records[i].key()).unwrap();
             assert_eq!(records[i].key(), record.key());
             assert_eq!(records[i].value(), record.value());
         }

@@ -6,6 +6,7 @@ mod appender;
 mod database;
 mod error;
 mod flatfile;
+mod index;
 mod record;
 mod seqno;
 mod seqno_iter;
