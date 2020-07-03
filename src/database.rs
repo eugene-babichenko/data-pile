@@ -1,5 +1,5 @@
 use crate::{flatfile::FlatFile, seqno::SeqNoIndex, Error, Record, RecordSerializer};
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 // 4 GiB
 pub const DEFAULT_FLATFILE_MAP_SIZE: usize = (1 << 30) * 4;
@@ -12,9 +12,10 @@ pub struct DatabaseBuilder {
     seqno_index_map_size: usize,
 }
 
-pub struct Database<R: RecordSerializer> {
-    flatfile: FlatFile,
-    seqno_index: SeqNoIndex,
+#[derive(Clone)]
+pub struct Database<R: RecordSerializer + Clone> {
+    flatfile: Arc<FlatFile>,
+    seqno_index: Arc<SeqNoIndex>,
     serializer: R,
 }
 
@@ -47,7 +48,7 @@ impl DatabaseBuilder {
     pub fn open<P, R>(self, path: P, serializer: R) -> Result<Database<R>, Error>
     where
         P: AsRef<Path>,
-        R: RecordSerializer,
+        R: RecordSerializer + Clone,
     {
         let path = path.as_ref();
 
@@ -60,10 +61,13 @@ impl DatabaseBuilder {
         }
 
         let flatfile_path = path.join("data");
-        let flatfile = FlatFile::new(flatfile_path, self.flatfile_map_size)?;
+        let flatfile = Arc::new(FlatFile::new(flatfile_path, self.flatfile_map_size)?);
 
         let seqno_index_path = path.join("seqno");
-        let seqno_index = SeqNoIndex::new(seqno_index_path, self.seqno_index_map_size)?;
+        let seqno_index = Arc::new(SeqNoIndex::new(
+            seqno_index_path,
+            self.seqno_index_map_size,
+        )?);
 
         Ok(Database {
             flatfile,
@@ -73,7 +77,7 @@ impl DatabaseBuilder {
     }
 }
 
-impl<R: RecordSerializer> Database<R> {
+impl<R: RecordSerializer + Clone> Database<R> {
     /// Write an array of records to the database. This function will block if
     /// another write is still in progress.
     pub fn append(&self, records: &[Record]) -> Result<(), Error> {
@@ -88,8 +92,6 @@ impl<R: RecordSerializer> Database<R> {
                 (offset + self.serializer.size(&record), update)
             },
         );
-
-        println!("{:?}", seqno_index_update);
 
         self.seqno_index.append(&seqno_index_update)?;
 

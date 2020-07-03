@@ -37,6 +37,7 @@ impl<T: RecordSerializer> RecordSerializer for &T {
 ///
 /// Length values are recorded as little-endian. They are located next to each
 /// other to make use of CPU caches.
+#[derive(Clone)]
 pub struct BasicRecordSerializer;
 
 /// A record serialized in a form of:
@@ -44,6 +45,7 @@ pub struct BasicRecordSerializer;
 /// * value length - 8 bytes
 /// * key bytes (specified in advance)
 /// * value bytes
+#[derive(Clone)]
 pub struct ConstKeyLenRecordSerializer {
     key_length: usize,
 }
