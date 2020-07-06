@@ -1,5 +1,5 @@
 [package]
-name = "rusted-chain"
+name = "data-pile"
 version = "0.1.0"
 authors = ["Yevhenii Babichenko <eugene.babichenko@protonmail.com>"]
 edition = "2018"
