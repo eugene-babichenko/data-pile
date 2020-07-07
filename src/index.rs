@@ -25,9 +25,11 @@ impl Index {
         Self { mapping }
     }
 
-    pub fn put(&self, key: &[u8], offset: usize) {
+    pub fn append(&self, kv: &[(&[u8], usize)]) {
         let mut guard = self.mapping.write().unwrap();
-        guard.insert(key.to_owned().into_boxed_slice(), offset);
+        for (key, offset) in kv {
+            guard.insert((*key).to_vec().into_boxed_slice(), *offset);
+        }
     }
 
     pub fn get(&self, key: &[u8]) -> Option<usize> {

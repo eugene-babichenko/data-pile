@@ -159,15 +159,17 @@ impl<R: RecordSerializer + Clone> Database<R> {
         self.flatfile.append(&self.serializer, records)?;
 
         let mut seqno_index_update = Vec::with_capacity(records.len());
+        let mut index_update = Vec::with_capacity(records.len());
         let mut offset = initial_size;
 
         for record in records.iter() {
             seqno_index_update.push(offset as u64);
-            self.index.put(record.key(), offset);
+            index_update.push((record.key(), offset));
             offset += self.serializer.size(record);
         }
 
         self.seqno_index.append(&seqno_index_update)?;
+        self.index.append(&index_update);
 
         Ok(())
     }
