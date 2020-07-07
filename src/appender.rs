@@ -7,10 +7,7 @@ use std::{
     fs::{File, OpenOptions},
     marker::Sync,
     path::Path,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Mutex,
-    },
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 pub(crate) struct Appender {
@@ -22,8 +19,6 @@ pub(crate) struct Appender {
     // reads. Since this value is updated only after the write has finished it
     // is safe to use it as the upper boundary for reads.
     actual_size: AtomicUsize,
-    // Used to protect from simultaneous writes.
-    write_mutex: Mutex<()>,
 }
 
 impl Appender {
@@ -63,13 +58,10 @@ impl Appender {
 
         let actual_size = AtomicUsize::from(actual_size);
 
-        let write_mutex = Mutex::from(());
-
         Ok(Self {
             file,
             mmap,
             actual_size,
-            write_mutex,
         })
     }
 
@@ -80,8 +72,6 @@ impl Appender {
     where
         F: Fn(&mut [u8]),
     {
-        let _guard = self.write_mutex.lock().unwrap();
-
         let mmap = unsafe { self.mmap.get().as_mut().unwrap() };
         let actual_size = self.actual_size.load(Ordering::Relaxed);
 

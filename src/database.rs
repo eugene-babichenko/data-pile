@@ -1,7 +1,10 @@
 use crate::{
     flatfile::FlatFile, index::Index, seqno::SeqNoIndex, Error, Record, RecordSerializer, SeqNoIter,
 };
-use std::{path::Path, sync::Arc};
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 // 4 GiB
 pub const DEFAULT_FLATFILE_MAP_SIZE: usize = (1 << 30) * 4;
@@ -20,6 +23,7 @@ pub struct Database<R: RecordSerializer + Clone> {
     seqno_index: Arc<SeqNoIndex>,
     index: Index<R>,
     serializer: R,
+    write_lock: Arc<Mutex<()>>,
 }
 
 impl DatabaseBuilder {
@@ -74,11 +78,14 @@ impl DatabaseBuilder {
 
         let index = Index::new(flatfile.clone(), serializer.clone());
 
+        let write_lock = Arc::new(Mutex::new(()));
+
         Ok(Database {
             flatfile,
             seqno_index,
             index,
             serializer,
+            write_lock,
         })
     }
 }
@@ -87,13 +94,15 @@ impl<R: RecordSerializer + Clone> Database<R> {
     /// Write an array of records to the database. This function will block if
     /// another write is still in progress.
     pub fn append(&self, records: &[Record]) -> Result<(), Error> {
-        let initial_size = self.flatfile.len();
+        let _write_guard = self.write_lock.lock().unwrap();
 
         for record in records.iter() {
             if self.index.contains(record.key()) {
                 return Err(Error::RecordExists(record.key().to_vec()));
             }
         }
+
+        let initial_size = self.flatfile.len();
 
         self.flatfile.append(&self.serializer, records)?;
 
