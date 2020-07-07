@@ -119,6 +119,13 @@ impl Appender {
     pub fn size(&self) -> usize {
         self.actual_size.load(Ordering::Relaxed)
     }
+
+    /// Get the pointer to the underlying raw data.
+    pub fn snapshot(&self) -> &[u8] {
+        let mmap = unsafe { self.mmap.get().as_ref().unwrap() };
+        let size = self.actual_size.load(Ordering::Relaxed);
+        &mmap[..size]
+    }
 }
 
 unsafe impl Sync for Appender {}

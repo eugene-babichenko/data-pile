@@ -60,6 +60,11 @@ impl FlatFile {
     pub fn len(&self) -> usize {
         self.inner.size()
     }
+
+    /// Get the pointer to the underlying raw data.
+    pub fn snapshot(&self) -> &[u8] {
+        self.inner.snapshot()
+    }
 }
 
 #[cfg(test)]

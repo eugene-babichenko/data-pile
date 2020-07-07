@@ -147,6 +147,13 @@ impl<R: RecordSerializer + Clone> Database<R> {
             offset,
         ))
     }
+
+    /// Get the underlying raw data. You can then use this data to recover a
+    /// database (for example, on another machine). To recover you will need to
+    /// write the snapshot data to a file `<database path>/data`.
+    pub fn snapshot(&self) -> &[u8] {
+        self.flatfile.snapshot()
+    }
 }
 
 #[cfg(test)]
