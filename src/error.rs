@@ -12,6 +12,8 @@ pub enum Error {
     Write(io::Error),
     /// Database path already exists and does not point to a directory
     PathNotDir,
+    /// The record with this key already exists.
+    RecordExists(Vec<u8>),
 }
 
 impl error::Error for Error {
@@ -22,6 +24,7 @@ impl error::Error for Error {
             Error::MmapTooSmall => None,
             Error::Write(source) => Some(source),
             Error::PathNotDir => None,
+            Error::RecordExists(_) => None,
         }
     }
 }
@@ -37,6 +40,7 @@ impl fmt::Display for Error {
                 f,
                 "database path already exists and does not point to a directory"
             ),
+            Error::RecordExists(id) => write!(f, "a record with id {:?} already exists", id),
         }
     }
 }

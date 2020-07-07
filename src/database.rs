@@ -89,6 +89,12 @@ impl<R: RecordSerializer + Clone> Database<R> {
     pub fn append(&self, records: &[Record]) -> Result<(), Error> {
         let initial_size = self.flatfile.len();
 
+        for record in records.iter() {
+            if self.index.contains(record.key()) {
+                return Err(Error::RecordExists(record.key().to_vec()));
+            }
+        }
+
         self.flatfile.append(&self.serializer, records)?;
 
         let mut seqno_index_update = Vec::with_capacity(records.len());

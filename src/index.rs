@@ -40,4 +40,9 @@ impl<R: RecordSerializer + Clone> Index<R> {
         let guard = self.mapping.read().unwrap();
         guard.get(key).map(|offset| *offset)
     }
+
+    pub fn contains(&self, key: &[u8]) -> bool {
+        let guard = self.mapping.read().unwrap();
+        guard.contains_key(key)
+    }
 }
