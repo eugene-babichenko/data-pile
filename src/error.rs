@@ -1,4 +1,4 @@
-use std::{error, fmt, io, path::PathBuf};
+use std::{error, fmt, fmt::Write, io, path::PathBuf};
 
 #[derive(Debug)]
 pub enum Error {
@@ -40,7 +40,15 @@ impl fmt::Display for Error {
                 f,
                 "database path already exists and does not point to a directory"
             ),
-            Error::RecordExists(id) => write!(f, "a record with id {:?} already exists", id),
+            Error::RecordExists(id) => write!(f, "a record with id {} already exists", hex(&id)),
         }
     }
+}
+
+fn hex(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(&mut s, "{:2x}", byte).unwrap();
+    }
+    s
 }
