@@ -57,6 +57,25 @@ impl DatabaseBuilder {
         P: AsRef<Path>,
         R: RecordSerializer + Clone,
     {
+        Database::new(
+            path,
+            serializer,
+            self.flatfile_map_size,
+            self.seqno_index_map_size,
+        )
+    }
+}
+
+impl<R: RecordSerializer + Clone> Database<R> {
+    fn new<P>(
+        path: P,
+        serializer: R,
+        flatfile_map_size: usize,
+        seqno_index_map_size: usize,
+    ) -> Result<Self, Error>
+    where
+        P: AsRef<Path>,
+    {
         let path = path.as_ref();
 
         if !path.is_dir() {
@@ -68,13 +87,48 @@ impl DatabaseBuilder {
         }
 
         let flatfile_path = path.join("data");
-        let flatfile = Arc::new(FlatFile::new(flatfile_path, self.flatfile_map_size)?);
+        let flatfile = Arc::new(FlatFile::new(flatfile_path, flatfile_map_size)?);
 
         let seqno_index_path = path.join("seqno");
-        let seqno_index = Arc::new(SeqNoIndex::new(
-            seqno_index_path,
-            self.seqno_index_map_size,
-        )?);
+        let seqno_index = Arc::new(SeqNoIndex::new(seqno_index_path, seqno_index_map_size)?);
+
+        let mut test_iter = SeqNoIter::new(flatfile.clone(), serializer.clone(), 0);
+
+        let mut data_bytes_read: usize = 0;
+        let mut seqno_bytes_read = 0;
+        let mut seqno_finished = false;
+        let mut records_read = 0;
+        let mut seqno_index_update = Vec::new();
+
+        while let Some(record) = test_iter.next() {
+            match seqno_index.get_pointer_to_value(records_read) {
+                Some(pointer) => {
+                    if pointer != data_bytes_read as u64 {
+                        return Err(Error::SeqNoIndexDamaged);
+                    }
+                    seqno_bytes_read += std::mem::size_of::<u64>();
+                }
+                None => {
+                    if seqno_finished {
+                        seqno_index_update.push(data_bytes_read as u64)
+                    } else {
+                        if seqno_bytes_read != seqno_index.len() {
+                            return Err(Error::SeqNoIndexDamaged);
+                        }
+                        seqno_finished = true;
+                        seqno_index_update.push(data_bytes_read as u64)
+                    }
+                }
+            }
+            data_bytes_read += serializer.size(&record);
+            records_read += 1;
+        }
+
+        if data_bytes_read < flatfile.len() as usize {
+            return Err(Error::DataFileDamaged);
+        }
+
+        seqno_index.append(&seqno_index_update)?;
 
         let index = Index::new(flatfile.clone(), serializer.clone());
 
@@ -88,9 +142,7 @@ impl DatabaseBuilder {
             write_lock,
         })
     }
-}
 
-impl<R: RecordSerializer + Clone> Database<R> {
     /// Write an array of records to the database. This function will block if
     /// another write is still in progress.
     pub fn append(&self, records: &[Record]) -> Result<(), Error> {
@@ -212,5 +264,31 @@ mod tests {
             count += 1;
         }
         assert_eq!(count, records.len());
+
+        // test snapshot recovery
+
+        let tmp_new = tempfile::tempdir().unwrap();
+
+        let data_path_old = tmp.path().join("data");
+        let data_path_new = tmp_new.path().join("data");
+        std::fs::copy(data_path_old, data_path_new).unwrap();
+
+        let db_new = DatabaseBuilder::new()
+            .flatfile_map_size(flatfile_size)
+            .seqno_index_map_size(seqno_index_size)
+            .open(tmp_new.path(), BasicRecordSerializer)
+            .unwrap();
+
+        for i in 0..records.len() {
+            let record = db_new.get_by_seqno(i).unwrap();
+            assert_eq!(records[i].key(), record.key());
+            assert_eq!(records[i].value(), record.value());
+        }
+
+        for i in 0..records.len() {
+            let record = db_new.get(records[i].key()).unwrap();
+            assert_eq!(records[i].key(), record.key());
+            assert_eq!(records[i].value(), record.value());
+        }
     }
 }

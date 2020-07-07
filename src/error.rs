@@ -14,6 +14,10 @@ pub enum Error {
     PathNotDir,
     /// The record with this key already exists.
     RecordExists(Vec<u8>),
+    /// Records in the data file are incorrect.
+    DataFileDamaged,
+    /// Sequential number index is broken
+    SeqNoIndexDamaged,
 }
 
 impl error::Error for Error {
@@ -25,6 +29,8 @@ impl error::Error for Error {
             Error::Write(source) => Some(source),
             Error::PathNotDir => None,
             Error::RecordExists(_) => None,
+            Error::DataFileDamaged => None,
+            Error::SeqNoIndexDamaged => None,
         }
     }
 }
@@ -41,6 +47,8 @@ impl fmt::Display for Error {
                 "database path already exists and does not point to a directory"
             ),
             Error::RecordExists(id) => write!(f, "a record with id {} already exists", hex(&id)),
+            Error::DataFileDamaged => write!(f, "data file looks damaged"),
+            Error::SeqNoIndexDamaged => write!(f, "sequential number index file looks damaged"),
         }
     }
 }
