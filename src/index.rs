@@ -5,14 +5,12 @@ use std::{
 };
 
 #[derive(Clone)]
-pub(crate) struct Index<R: RecordSerializer> {
-    data: Arc<FlatFile>,
-    serializer: R,
+pub(crate) struct Index {
     mapping: Arc<RwLock<BTreeMap<Box<[u8]>, usize>>>,
 }
 
-impl<R: RecordSerializer + Clone> Index<R> {
-    pub fn new(data: Arc<FlatFile>, serializer: R) -> Self {
+impl Index {
+    pub fn new<R: RecordSerializer + Clone>(data: Arc<FlatFile>, serializer: R) -> Self {
         let mut iter = SeqNoIter::new(data.clone(), serializer.clone(), 0);
         let mut offset = 0;
         let mut mapping = BTreeMap::new();
@@ -24,11 +22,7 @@ impl<R: RecordSerializer + Clone> Index<R> {
 
         let mapping = Arc::new(RwLock::new(mapping));
 
-        Self {
-            data,
-            serializer,
-            mapping,
-        }
+        Self { mapping }
     }
 
     pub fn put(&self, key: &[u8], offset: usize) {

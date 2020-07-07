@@ -21,7 +21,7 @@ pub struct DatabaseBuilder {
 pub struct Database<R: RecordSerializer + Clone> {
     flatfile: Arc<FlatFile>,
     seqno_index: Arc<SeqNoIndex>,
-    index: Index<R>,
+    index: Index,
     serializer: R,
     write_lock: Arc<Mutex<()>>,
 }
@@ -118,6 +118,10 @@ impl<R: RecordSerializer + Clone> Database<R> {
         self.seqno_index.append(&seqno_index_update)?;
 
         Ok(())
+    }
+
+    pub fn put(&self, record: Record) -> Result<(), Error> {
+        self.append(&[record])
     }
 
     /// Get a record by its key.
