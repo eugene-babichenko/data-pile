@@ -91,14 +91,14 @@ impl Appender {
         let result = {
             self.file
                 .set_len(new_file_size as u64)
-                .map_err(Error::Write)?;
+                .map_err(Error::Extend)?;
             maybe_mmap.init(&self.file)?;
 
             let mmap = maybe_mmap.as_mut().unwrap();
 
             f(&mut mmap[actual_size..new_file_size]);
 
-            mmap.flush().map_err(Error::Write)?;
+            mmap.flush().map_err(Error::Flush)?;
 
             Ok(())
         };

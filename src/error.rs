@@ -8,8 +8,6 @@ pub enum Error {
     Mmap(io::Error),
     // mmap is too small for a file to be extended.
     MmapTooSmall,
-    /// Error while extending a file.
-    Write(io::Error),
     /// Database path already exists and does not point to a directory
     PathNotDir,
     /// The record with this key already exists.
@@ -18,6 +16,10 @@ pub enum Error {
     DataFileDamaged,
     /// Sequential number index is broken
     SeqNoIndexDamaged,
+    /// Failed to extend a file
+    Extend(io::Error),
+    /// Failed to flush database records to disk
+    Flush(io::Error),
 }
 
 impl error::Error for Error {
@@ -26,11 +28,12 @@ impl error::Error for Error {
             Error::FileOpen(_, source) => Some(source),
             Error::Mmap(source) => Some(source),
             Error::MmapTooSmall => None,
-            Error::Write(source) => Some(source),
             Error::PathNotDir => None,
             Error::RecordExists(_) => None,
             Error::DataFileDamaged => None,
             Error::SeqNoIndexDamaged => None,
+            Error::Extend(source) => Some(source),
+            Error::Flush(source) => Some(source),
         }
     }
 }
@@ -41,7 +44,6 @@ impl fmt::Display for Error {
             Error::FileOpen(path, _) => write!(f, "failed to open file `{}`", path.display()),
             Error::Mmap(_) => write!(f, "memory map failed"),
             Error::MmapTooSmall => write!(f, "the map size is too little to write new records"),
-            Error::Write(_) => write!(f, "failed to write the file"),
             Error::PathNotDir => write!(
                 f,
                 "database path already exists and does not point to a directory"
@@ -49,6 +51,8 @@ impl fmt::Display for Error {
             Error::RecordExists(id) => write!(f, "a record with id {} already exists", hex(&id)),
             Error::DataFileDamaged => write!(f, "data file looks damaged"),
             Error::SeqNoIndexDamaged => write!(f, "sequential number index file looks damaged"),
+            Error::Extend(_) => write!(f, "failed to extend a database file"),
+            Error::Flush(_) => write!(f, "failed to flush database records to disk"),
         }
     }
 }
