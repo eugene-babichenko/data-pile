@@ -44,7 +44,7 @@ impl Appender {
 
         let file = OpenOptions::new()
             .read(true)
-            .append(true)
+            .write(true)
             .create(true)
             .open(path)
             .map_err(|err| Error::FileOpen(path.to_path_buf(), err))?;
