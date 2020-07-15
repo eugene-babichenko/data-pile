@@ -20,6 +20,8 @@ pub enum Error {
     Extend(io::Error),
     /// Failed to flush database records to disk
     Flush(io::Error),
+    /// Failed to get file metadata
+    Metadata(io::Error),
 }
 
 impl error::Error for Error {
@@ -34,6 +36,7 @@ impl error::Error for Error {
             Error::SeqNoIndexDamaged => None,
             Error::Extend(source) => Some(source),
             Error::Flush(source) => Some(source),
+            Error::Metadata(source) => Some(source),
         }
     }
 }
@@ -53,6 +56,7 @@ impl fmt::Display for Error {
             Error::SeqNoIndexDamaged => write!(f, "sequential number index file looks damaged"),
             Error::Extend(_) => write!(f, "failed to extend a database file"),
             Error::Flush(_) => write!(f, "failed to flush database records to disk"),
+            Error::Metadata(_) => write!(f, "failed to get file metadata"),
         }
     }
 }
