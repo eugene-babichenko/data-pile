@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use data_pile::{serialization::BasicRecordSerializer, DatabaseBuilder, Error, Record};
+use data_pile::{serialization::BasicRecordSerializer, Database, Error, Record};
 use rand::{rngs::OsRng, RngCore};
 
 fn put_get(c: &mut Criterion) {
@@ -8,9 +8,7 @@ fn put_get(c: &mut Criterion) {
     const MAX_VALUE_LEN: u64 = 4096;
 
     let tmp = tempfile::tempdir().unwrap();
-    let db = DatabaseBuilder::new()
-        .open(tmp.path(), BasicRecordSerializer)
-        .unwrap();
+    let db = Database::new(tmp.path(), BasicRecordSerializer).unwrap();
 
     let mut rng = OsRng;
 

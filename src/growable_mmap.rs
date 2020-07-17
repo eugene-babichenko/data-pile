@@ -32,6 +32,8 @@ impl GrowableMmap {
                 0, starting_point,
                 "should not specify non-zero offset for a zero-sized file"
             );
+            assert_ne!(0, add, "no increase in file size");
+
             self.file.set_len(add as u64).map_err(Error::Extend)?;
             self.ranges.push(0..add);
             self.maps
@@ -74,71 +76,20 @@ impl GrowableMmap {
         Ok(())
     }
 
-    pub fn len(&self) -> usize {
-        self.ranges.last().map(|range| range.end).unwrap_or(0)
+    pub fn get_mut_last(&mut self) -> Option<&mut [u8]> {
+        self.maps.last_mut().map(|page| page.as_mut())
     }
 
     pub fn get_ref(&self, address: usize) -> Option<&[u8]> {
-        let (position, begin, end) = self.get_position(address)?;
-        let mmap = self.maps[position].as_ref();
-        Some(&mmap[begin..end])
-    }
-
-    pub fn get_mut(&mut self, address: usize) -> Option<&mut [u8]> {
-        let (position, begin, end) = self.get_position(address)?;
-        let mmap = self.maps[position].as_mut();
-        Some(&mut mmap[begin..end])
-    }
-
-    fn get_position(&self, address: usize) -> Option<(usize, usize, usize)> {
-        let (position, boundaries) = self
+        let (position, bounds) = self
             .ranges
             .iter()
             .enumerate()
-            .find(|(_, boundaries)| boundaries.contains(&address))?;
+            .find(|(_, bounds)| bounds.contains(&address))?;
 
-        let segment_beginning = boundaries.start;
-        let begin = address - segment_beginning;
-        let end = boundaries.end - boundaries.start;
+        let start = address - bounds.start;
+        let end = bounds.end - bounds.start;
 
-        Some((position, begin, end))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::GrowableMmap;
-
-    #[test]
-    pub fn grow() {
-        let tmp = tempfile::tempfile().unwrap();
-
-        let mut mmap = GrowableMmap::new(tmp).unwrap();
-        assert!(mmap.get_ref(0).is_none());
-
-        mmap.grow(0, 10).unwrap();
-
-        let page = mmap.get_mut(0).unwrap();
-        page.copy_from_slice(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-
-        let page = mmap.get_ref(4).unwrap();
-        assert_eq!(&[4, 5, 6, 7, 8, 9], page);
-
-        assert!(mmap.get_ref(10).is_none());
-
-        mmap.grow(5, 10).unwrap();
-
-        let page = mmap.get_ref(6).unwrap();
-        assert_eq!(&[6, 7, 8, 9, 0, 0, 0, 0, 0, 0], page);
-
-        let page = mmap.get_mut(8).unwrap();
-        assert_eq!(&[8, 9, 0, 0, 0, 0, 0, 0], page);
-
-        page.copy_from_slice(&[1, 1, 1, 1, 1, 1, 1, 1]);
-
-        let page = mmap.get_mut(0).unwrap();
-        assert_eq!(&[0, 1, 2, 3, 4, 5], page);
-
-        assert!(mmap.get_ref(16).is_none());
+        Some(&self.maps[position][start..end])
     }
 }

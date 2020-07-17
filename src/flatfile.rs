@@ -19,11 +19,8 @@ impl FlatFile {
     /// # Arguments
     ///
     /// * `path` - the path to the file. It will be created if not exists.
-    /// * `map_size` - the size of the memory map that will be used. This map
-    ///   limits the size of the file. If the `map_size` is smaller than the
-    ///   size of the file, an error will be returned.
-    pub fn new<P: AsRef<Path>>(path: P, map_size: usize) -> Result<Self, Error> {
-        Appender::new(path, map_size).map(|inner| FlatFile { inner })
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        Appender::new(path).map(|inner| FlatFile { inner })
     }
 
     /// Write an array of records to the drive. This function will block if
@@ -54,17 +51,17 @@ impl FlatFile {
         R: RecordSerializer,
     {
         self.inner
-            .get_data(move |mmap| serializer.deserialize(&mmap[offset..]))
+            .get_data(offset, move |mmap| serializer.deserialize(mmap))
     }
 
     pub fn len(&self) -> usize {
         self.inner.size()
     }
 
-    /// Get the pointer to the underlying raw data.
-    pub fn snapshot(&self) -> &[u8] {
-        self.inner.snapshot()
-    }
+    // /// Get the pointer to the underlying raw data.
+    // pub fn snapshot(&self) -> &[u8] {
+    //     self.inner.snapshot()
+    // }
 }
 
 #[cfg(test)]
@@ -75,19 +72,6 @@ mod tests {
         testutils::TestData,
     };
 
-    fn convert_records(records: &[TestData]) -> (Vec<Record>, usize) {
-        let raw_records: Vec<_> = records
-            .iter()
-            .map(|record| Record::new(&record.key, &record.value))
-            .collect();
-
-        let map_size: usize = raw_records
-            .iter()
-            .fold(0, |size, record| size + BasicRecordSerializer.size(&record));
-
-        (raw_records, map_size)
-    }
-
     #[quickcheck]
     fn test_read_write(records: Vec<TestData>) {
         if records.is_empty() {
@@ -96,9 +80,12 @@ mod tests {
 
         let tmp = tempfile::NamedTempFile::new().unwrap();
 
-        let (raw_records, map_size) = convert_records(&records);
+        let raw_records: Vec<_> = records
+            .iter()
+            .map(|record| Record::new(&record.key, &record.value))
+            .collect();
 
-        let flatfile = FlatFile::new(tmp.path(), map_size).unwrap();
+        let flatfile = FlatFile::new(tmp.path()).unwrap();
         flatfile
             .append(BasicRecordSerializer, &raw_records)
             .unwrap();

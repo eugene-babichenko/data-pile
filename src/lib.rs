@@ -16,7 +16,7 @@ pub mod serialization;
 mod testutils;
 
 use appender::Appender;
-pub use database::{Database, DatabaseBuilder};
+pub use database::Database;
 pub use error::Error;
 pub use record::Record;
 pub use seqno_iter::SeqNoIter;

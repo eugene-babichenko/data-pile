@@ -12,9 +12,9 @@
 ### Example
 
 ```rust
-use data_pile::{DatabaseBuilder, BasicRecordSerializer};
+use data_pile::{Database, BasicRecordSerializer};
 
-let db = DatabaseBuilder::new().open(BasicRecordSerializer, "./pile");
+let db = Database::new(BasicRecordSerializer, "./pile");
 
 let key = b"qwerty";
 let value = b"some data";
@@ -23,12 +23,6 @@ let record = Record::new(&key, &value);
 
 db.put(record).unwrap();
 ```
-
-### Memory map configuration
-
-`pile` relies heavily on memory-mapped files. You should always take care to
-have enough memory allocated in the mapping. This is configurable with
-`DatabaseBuilder`.
 
 ### Transferring the data
 

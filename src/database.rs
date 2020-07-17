@@ -6,17 +6,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-// 4 GiB
-pub const DEFAULT_FLATFILE_MAP_SIZE: usize = (1 << 30) * 4;
-// 512 MiB
-pub const DEFAULT_SEQNO_INDEX_MAP_SIZE: usize = (1 << 20) * 512;
-
-/// Build `Database` instances.
-pub struct DatabaseBuilder {
-    flatfile_map_size: usize,
-    seqno_index_map_size: usize,
-}
-
 #[derive(Clone)]
 pub struct Database<R: RecordSerializer + Clone> {
     flatfile: Arc<FlatFile>,
@@ -26,53 +15,8 @@ pub struct Database<R: RecordSerializer + Clone> {
     write_lock: Arc<Mutex<()>>,
 }
 
-impl DatabaseBuilder {
-    /// Create a builder with the default parameters.
-    pub fn new() -> Self {
-        Self {
-            flatfile_map_size: DEFAULT_FLATFILE_MAP_SIZE,
-            seqno_index_map_size: DEFAULT_SEQNO_INDEX_MAP_SIZE,
-        }
-    }
-
-    /// The size of `mmap` range to be used for reading database files.
-    pub fn flatfile_map_size(self, value: usize) -> Self {
-        Self {
-            flatfile_map_size: value,
-            ..self
-        }
-    }
-
-    /// The size of `mmap` range to be used for reading the sequential number index.
-    pub fn seqno_index_map_size(self, value: usize) -> Self {
-        Self {
-            seqno_index_map_size: value,
-            ..self
-        }
-    }
-
-    /// Open the database. Will create it if not exists.
-    pub fn open<P, R>(self, path: P, serializer: R) -> Result<Database<R>, Error>
-    where
-        P: AsRef<Path>,
-        R: RecordSerializer + Clone,
-    {
-        Database::new(
-            path,
-            serializer,
-            self.flatfile_map_size,
-            self.seqno_index_map_size,
-        )
-    }
-}
-
 impl<R: RecordSerializer + Clone> Database<R> {
-    fn new<P>(
-        path: P,
-        serializer: R,
-        flatfile_map_size: usize,
-        seqno_index_map_size: usize,
-    ) -> Result<Self, Error>
+    pub fn new<P>(path: P, serializer: R) -> Result<Self, Error>
     where
         P: AsRef<Path>,
     {
@@ -87,10 +31,10 @@ impl<R: RecordSerializer + Clone> Database<R> {
         }
 
         let flatfile_path = path.join("data");
-        let flatfile = Arc::new(FlatFile::new(flatfile_path, flatfile_map_size)?);
+        let flatfile = Arc::new(FlatFile::new(flatfile_path)?);
 
         let seqno_index_path = path.join("seqno");
-        let seqno_index = Arc::new(SeqNoIndex::new(seqno_index_path, seqno_index_map_size)?);
+        let seqno_index = Arc::new(SeqNoIndex::new(seqno_index_path)?);
 
         let mut test_iter = SeqNoIter::new(flatfile.clone(), serializer.clone(), 0);
 
@@ -202,20 +146,19 @@ impl<R: RecordSerializer + Clone> Database<R> {
         ))
     }
 
-    /// Get the underlying raw data. You can then use this data to recover a
-    /// database (for example, on another machine). To recover you will need to
-    /// write the snapshot data to a file `<database path>/data`.
-    pub fn snapshot(&self) -> &[u8] {
-        self.flatfile.snapshot()
-    }
+    // /// Get the underlying raw data. You can then use this data to recover a
+    // /// database (for example, on another machine). To recover you will need to
+    // /// write the snapshot data to a file `<database path>/data`.
+    // pub fn snapshot(&self) -> &[u8] {
+    //     self.flatfile.snapshot()
+    // }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::DatabaseBuilder;
-    use crate::{
-        serialization::BasicRecordSerializer, testutils::TestData, Record, RecordSerializer,
-    };
+    use super::Database;
+    use crate::{serialization::BasicRecordSerializer, testutils::TestData, Record};
+    use std::collections::HashSet;
 
     #[quickcheck]
     fn read_write(mut data: Vec<TestData>) {
@@ -232,16 +175,8 @@ mod tests {
             .iter()
             .map(|data| Record::new(&data.key, &data.value))
             .collect();
-        let flatfile_size = records
-            .iter()
-            .fold(0, |size, record| size + BasicRecordSerializer.size(&record));
-        let seqno_index_size = records.len() * std::mem::size_of::<u64>();
 
-        let db = DatabaseBuilder::new()
-            .flatfile_map_size(flatfile_size)
-            .seqno_index_map_size(seqno_index_size)
-            .open(tmp.path(), BasicRecordSerializer)
-            .unwrap();
+        let db = Database::new(tmp.path(), BasicRecordSerializer).unwrap();
 
         db.append(&records).unwrap();
 
@@ -275,11 +210,7 @@ mod tests {
         let data_path_new = tmp_new.path().join("data");
         std::fs::copy(data_path_old, data_path_new).unwrap();
 
-        let db_new = DatabaseBuilder::new()
-            .flatfile_map_size(flatfile_size)
-            .seqno_index_map_size(seqno_index_size)
-            .open(tmp_new.path(), BasicRecordSerializer)
-            .unwrap();
+        let db_new = Database::new(tmp_new.path(), BasicRecordSerializer).unwrap();
 
         for i in 0..records.len() {
             let record = db_new.get_by_seqno(i).unwrap();
@@ -291,6 +222,63 @@ mod tests {
             let record = db_new.get(records[i].key()).unwrap();
             assert_eq!(records[i].key(), record.key());
             assert_eq!(records[i].value(), record.value());
+        }
+    }
+
+    #[quickcheck]
+    fn parallel_read_write(mut data1: Vec<TestData>, data2: Vec<TestData>) {
+        if data1.is_empty() || data2.is_empty() {
+            return;
+        }
+
+        data1.sort_by_key(|record| record.key.to_owned());
+        data1.dedup_by_key(|record| record.key.to_owned());
+
+        let data1_keys: HashSet<_> = data1.iter().map(|record| &record.key).collect();
+        let mut data2: Vec<_> = data2
+            .into_iter()
+            .filter(|record| !data1_keys.contains(&record.key))
+            .collect();
+
+        let records1: Vec<_> = data1
+            .iter()
+            .map(|data| Record::new(&data.key, &data.value))
+            .collect();
+
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::new(tmp.path(), BasicRecordSerializer).unwrap();
+
+        db.append(&records1).unwrap();
+
+        let write_db = db.clone();
+
+        let write_thread = std::thread::spawn(move || {
+            data2.sort_by_key(|record| record.key.to_owned());
+            data2.dedup_by_key(|record| record.key.to_owned());
+
+            let records2: Vec<_> = data2
+                .iter()
+                .map(|data| Record::new(&data.key, &data.value))
+                .collect();
+
+            write_db.append(&records2).unwrap();
+
+            data2
+        });
+
+        for i in 0..records1.len() {
+            let record = db.get_by_seqno(i).unwrap();
+            assert_eq!(records1[i].key(), record.key());
+            assert_eq!(records1[i].value(), record.value());
+        }
+
+        let data2 = write_thread.join().unwrap();
+
+        for i in data1.len()..data2.len() {
+            let record = db.get_by_seqno(i).unwrap();
+            let i = i - data1.len();
+            assert_eq!(data2[i].key, record.key());
+            assert_eq!(data2[i].value, record.value());
         }
     }
 }
