@@ -8,6 +8,7 @@ mod error;
 mod flatfile;
 mod growable_mmap;
 mod index;
+mod page_index;
 mod record;
 mod seqno;
 mod seqno_iter;

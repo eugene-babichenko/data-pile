@@ -274,7 +274,7 @@ mod tests {
 
         let data2 = write_thread.join().unwrap();
 
-        for i in data1.len()..data2.len() {
+        for i in data1.len()..(data1.len() + data2.len()) {
             let record = db.get_by_seqno(i).unwrap();
             let i = i - data1.len();
             assert_eq!(data2[i].key, record.key());
