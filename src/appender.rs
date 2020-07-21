@@ -92,14 +92,12 @@ impl Appender {
         self.actual_size.load(Ordering::Relaxed)
     }
 
-    // /// Get the pointer to the underlying raw data.
-    // pub fn snapshot(&self) -> &[u8] {
-    //     let mmap = unsafe { self.mmap.get().as_ref().unwrap() }
-    //         .as_ref()
-    //         .unwrap_or(&[]);
-    //     let size = self.actual_size.load(Ordering::Relaxed);
-    //     &mmap[..size]
-    // }
+    /// Get the pointer to the underlying raw data.
+    pub fn snapshot(&self) -> Result<impl AsRef<[u8]>, Error> {
+        let mmap = unsafe { self.mmap.get().as_ref().unwrap() };
+        let length = self.actual_size.load(Ordering::Relaxed);
+        mmap.snapshot(length)
+    }
 }
 
 unsafe impl Sync for Appender {}

@@ -58,10 +58,10 @@ impl FlatFile {
         self.inner.size()
     }
 
-    // /// Get the pointer to the underlying raw data.
-    // pub fn snapshot(&self) -> &[u8] {
-    //     self.inner.snapshot()
-    // }
+    /// Get the pointer to the underlying raw data.
+    pub fn snapshot(&self) -> Result<impl AsRef<[u8]>, Error> {
+        self.inner.snapshot()
+    }
 }
 
 #[cfg(test)]

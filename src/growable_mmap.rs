@@ -96,4 +96,8 @@ impl GrowableMmap {
         } = self.index.read().unwrap().find(address)?;
         Some(&self.maps[number][(address - offset)..len])
     }
+
+    pub fn snapshot(&self, end: usize) -> Result<impl AsRef<[u8]>, Error> {
+        unsafe { MmapOptions::new().len(end).map(&self.file) }.map_err(Error::Mmap)
+    }
 }
