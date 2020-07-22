@@ -24,12 +24,12 @@ impl<R: RecordSerializer + Clone> Database<R> {
     {
         let path = path.as_ref();
 
-        if !path.is_dir() {
-            return Err(Error::PathNotDir);
-        }
-
         if !path.exists() {
             std::fs::create_dir(path).map_err(|err| Error::FileOpen(path.to_path_buf(), err))?;
+        }
+
+        if !path.is_dir() {
+            return Err(Error::PathNotDir);
         }
 
         let flatfile_path = path.join("data");
