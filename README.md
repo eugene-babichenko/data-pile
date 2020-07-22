@@ -12,15 +12,14 @@
 ### Example
 
 ```rust
-use data_pile::{Database, BasicRecordSerializer};
+use data_pile::{Database, Record, serialization::BasicRecordSerializer};
 
-let db = Database::new(BasicRecordSerializer, "./pile");
+let db = Database::new("./pile", BasicRecordSerializer).unwrap();
 
-let key = b"qwerty";
-let value = b"some data";
+ let key = b"qwerty";
+ let value = b"some data";
 
-let record = Record::new(&key, &value);
-
+let record = Record::new(&key[..], &value[..]);
 db.put(record).unwrap();
 ```
 
