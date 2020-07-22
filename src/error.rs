@@ -6,8 +6,6 @@ pub enum Error {
     FileOpen(PathBuf, io::Error),
     /// Failed to create mmap.
     Mmap(io::Error),
-    // mmap is too small for a file to be extended.
-    MmapTooSmall,
     /// Database path already exists and does not point to a directory
     PathNotDir,
     /// The record with this key already exists.
@@ -29,7 +27,6 @@ impl error::Error for Error {
         match self {
             Error::FileOpen(_, source) => Some(source),
             Error::Mmap(source) => Some(source),
-            Error::MmapTooSmall => None,
             Error::PathNotDir => None,
             Error::RecordExists(_) => None,
             Error::DataFileDamaged => None,
@@ -46,7 +43,6 @@ impl fmt::Display for Error {
         match self {
             Error::FileOpen(path, _) => write!(f, "failed to open file `{}`", path.display()),
             Error::Mmap(_) => write!(f, "memory map failed"),
-            Error::MmapTooSmall => write!(f, "the map size is too little to write new records"),
             Error::PathNotDir => write!(
                 f,
                 "database path already exists and does not point to a directory"
