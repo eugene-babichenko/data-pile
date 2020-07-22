@@ -1,5 +1,7 @@
 # `pile` - a simple and fast append-only data store
 
+![Crates.io](https://img.shields.io/crates/v/data-pile)
+
 ## Design goals
 
 * Efficient adding of bug chunks of data.
@@ -16,8 +18,8 @@ use data_pile::{Database, Record, serialization::BasicRecordSerializer};
 
 let db = Database::new("./pile", BasicRecordSerializer).unwrap();
 
- let key = b"qwerty";
- let value = b"some data";
+let key = b"qwerty";
+let value = b"some data";
 
 let record = Record::new(&key[..], &value[..]);
 db.put(record).unwrap();
