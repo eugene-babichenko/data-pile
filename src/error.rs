@@ -1,5 +1,6 @@
 use std::{error, fmt, fmt::Write, io, path::PathBuf};
 
+/// Datbase error.
 #[derive(Debug)]
 pub enum Error {
     /// Failed to open file.

@@ -6,6 +6,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+/// Append-only database. Can be safely cloned and used from different threads.
 #[derive(Clone)]
 pub struct Database<R: RecordSerializer + Clone> {
     flatfile: Arc<FlatFile>,
@@ -16,6 +17,7 @@ pub struct Database<R: RecordSerializer + Clone> {
 }
 
 impl<R: RecordSerializer + Clone> Database<R> {
+    /// Open the database. Will create one if not exists.
     pub fn new<P>(path: P, serializer: R) -> Result<Self, Error>
     where
         P: AsRef<Path>,
@@ -118,6 +120,7 @@ impl<R: RecordSerializer + Clone> Database<R> {
         Ok(())
     }
 
+    /// Put a single record (not recommended).
     pub fn put(&self, record: Record) -> Result<(), Error> {
         self.append(&[record])
     }

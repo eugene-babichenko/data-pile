@@ -1,3 +1,5 @@
+//! Database record serialization.
+
 use crate::Record;
 use std::{io::Write, mem::size_of};
 
