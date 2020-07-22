@@ -3,6 +3,14 @@ name = "data-pile"
 version = "0.1.0"
 authors = ["Yevhenii Babichenko <eugene.babichenko@protonmail.com>"]
 edition = "2018"
+description = "A simple and fast append-only data store"
+documentation = "https://docs.rs/data-pile"
+readme = "README.md"
+homepage = "https://github.com/eugene-babichenko/data-pile"
+repository = "https://github.com/eugene-babichenko/data-pile"
+license-file = "LICENSE"
+keywords = ["append-only", "key-value", "storage", "database"]
+categories = ["database"]
 
 [dependencies]
 memmap = "0.7.0"
