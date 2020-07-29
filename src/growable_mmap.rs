@@ -1,13 +1,13 @@
 use crate::{
     page_index::{PageDescriptor, PageIndex},
-    Error,
+    Error, SharedMmap,
 };
-use memmap::{MmapMut, MmapOptions};
+use memmap::MmapOptions;
 use std::{fs::File, sync::RwLock};
 
 pub struct GrowableMmap {
     index: RwLock<PageIndex>,
-    maps: Vec<MmapMut>,
+    maps: Vec<SharedMmap>,
     file: File,
 }
 
@@ -25,8 +25,9 @@ impl GrowableMmap {
             .len()
             > 0
         {
-            let mmap =
-                unsafe { MmapOptions::new().map_mut(&growable_mmap.file) }.map_err(Error::Mmap)?;
+            let mmap = SharedMmap::new(
+                unsafe { MmapOptions::new().map_mut(&growable_mmap.file) }.map_err(Error::Mmap)?,
+            );
             growable_mmap.index.write().unwrap().add_page(0, mmap.len());
             growable_mmap.maps.push(mmap);
         }
@@ -45,8 +46,9 @@ impl GrowableMmap {
 
             self.file.set_len(add as u64).map_err(Error::Extend)?;
             index.add_page(0, add);
-            self.maps
-                .push(unsafe { MmapOptions::new().map_mut(&self.file) }.map_err(Error::Mmap)?);
+            self.maps.push(SharedMmap::new(
+                unsafe { MmapOptions::new().map_mut(&self.file) }.map_err(Error::Mmap)?,
+            ));
 
             return Ok(());
         }
@@ -64,12 +66,14 @@ impl GrowableMmap {
 
         self.file.set_len(new_len as u64).map_err(Error::Extend)?;
 
-        let mmap = unsafe {
-            MmapOptions::new()
-                .offset((starting_point + 1) as u64)
-                .map_mut(&self.file)
-        }
-        .map_err(Error::Mmap)?;
+        let mmap = SharedMmap::new(
+            unsafe {
+                MmapOptions::new()
+                    .offset((starting_point + 1) as u64)
+                    .map_mut(&self.file)
+            }
+            .map_err(Error::Mmap)?,
+        );
         self.maps.push(mmap);
         index.add_page(starting_point + 1, new_len);
 
@@ -94,7 +98,7 @@ impl GrowableMmap {
             offset,
             number,
         } = self.index.read().unwrap().find(address)?;
-        Some(&self.maps[number][(address - offset)..len])
+        Some(&self.maps[number].as_ref()[(address - offset)..len])
     }
 
     pub fn snapshot(&self, end: usize) -> Result<impl AsRef<[u8]>, Error> {

@@ -48,6 +48,7 @@ mod record;
 mod seqno;
 mod seqno_iter;
 pub mod serialization;
+mod shared_mmap;
 #[cfg(test)]
 mod testutils;
 
@@ -57,3 +58,4 @@ pub use error::Error;
 pub use record::Record;
 pub use seqno_iter::SeqNoIter;
 pub use serialization::RecordSerializer;
+pub use shared_mmap::SharedMmap;
