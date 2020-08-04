@@ -14,10 +14,14 @@ impl PageIndex {
         Self { bounds: Vec::new() }
     }
 
-    pub fn add_page(&mut self, start: usize, end: usize) {
+    pub fn add_page(&mut self, end: usize) {
+        let start = self.bounds.last().map(|x| *x).unwrap_or(0);
         assert!(start < end);
-        self.bounds.pop();
-        self.bounds.push(start);
+
+        if self.bounds.is_empty() {
+            self.bounds.push(0);
+        }
+
         self.bounds.push(end);
     }
 
@@ -61,11 +65,11 @@ mod tests {
 
     #[test]
     fn index() {
-        let data = [0, 34, 42, 67, 96, 103, 420];
+        let data = [34, 42, 67, 96, 103, 420];
         let mut index = PageIndex::new();
 
-        for i in 1..data.len() {
-            index.add_page(data[i - 1], data[i]);
+        for i in 0..data.len() {
+            index.add_page(data[i]);
         }
 
         assert_eq!(

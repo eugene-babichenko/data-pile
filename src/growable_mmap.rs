@@ -28,7 +28,7 @@ impl GrowableMmap {
             let mmap = SharedMmap::new(
                 unsafe { MmapOptions::new().map_mut(&growable_mmap.file) }.map_err(Error::Mmap)?,
             );
-            growable_mmap.index.write().unwrap().add_page(0, mmap.len());
+            growable_mmap.index.write().unwrap().add_page(mmap.len());
             growable_mmap.maps.push(mmap);
         }
 
@@ -45,7 +45,7 @@ impl GrowableMmap {
             assert_ne!(0, add, "no increase in file size");
 
             self.file.set_len(add as u64).map_err(Error::Extend)?;
-            index.add_page(0, add);
+            index.add_page(add);
             self.maps.push(SharedMmap::new(
                 unsafe { MmapOptions::new().map_mut(&self.file) }.map_err(Error::Mmap)?,
             ));
@@ -75,7 +75,7 @@ impl GrowableMmap {
             .map_err(Error::Mmap)?,
         );
         self.maps.push(mmap);
-        index.add_page(starting_point + 1, new_len);
+        index.add_page(new_len);
 
         Ok(())
     }
