@@ -12,17 +12,11 @@
 //! ### Example
 //!
 //! ```rust,ignore
-//! use data_pile::{Database, Record, serialization::BasicRecordSerializer};
-//!
-//! let db = Database::new("./pile", BasicRecordSerializer).unwrap();
-//!
-//! let key = b"qwerty";
+//! use data_pile::Database;
+//! let db = Database::new("./pile").unwrap();
 //! let value = b"some data";
-//!
-//! let record = Record::new(&key[..], &value[..]);
-//!
-//! db.put(record).unwrap();
-//! ```
+//! db.put(&value).unwrap();
+//! ````
 //!
 //! ### Transferring the data
 //!
@@ -42,12 +36,9 @@ mod database;
 mod error;
 mod flatfile;
 mod growable_mmap;
-mod index;
 mod page_index;
-mod record;
 mod seqno;
 mod seqno_iter;
-pub mod serialization;
 mod shared_mmap;
 #[cfg(test)]
 mod testutils;
@@ -55,7 +46,5 @@ mod testutils;
 use appender::Appender;
 pub use database::Database;
 pub use error::Error;
-pub use record::Record;
 pub use seqno_iter::SeqNoIter;
-pub use serialization::RecordSerializer;
 pub use shared_mmap::SharedMmap;

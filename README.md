@@ -4,7 +4,7 @@
 
 ## Design goals
 
-* Efficient adding of bug chunks of data.
+* Efficient adding of big chunks of data.
 * A user should be able to copy the storage data (for example, over the network)
   while still being able to use the database for both reads and writes.
 * The storage should have a minimal dependency footprint.
@@ -14,15 +14,10 @@
 ### Example
 
 ```rust
-use data_pile::{Database, Record, serialization::BasicRecordSerializer};
-
-let db = Database::new("./pile", BasicRecordSerializer).unwrap();
-
-let key = b"qwerty";
+use data_pile::Database;
+let db = Database::new("./pile").unwrap();
 let value = b"some data";
-
-let record = Record::new(&key[..], &value[..]);
-db.put(record).unwrap();
+db.put(&value).unwrap();
 ```
 
 ### Transferring the data
@@ -33,3 +28,8 @@ db.put(record).unwrap();
   and add all snapshot data into it.
 - Just start using the database: it will verify correctness and rebuild all
   indexes.
+
+### Notes
+
+Values are accessible only by their sequential numbers. You will need an
+external index if you want any other kind of keys.

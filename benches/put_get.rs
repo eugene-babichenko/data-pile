@@ -1,63 +1,47 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use data_pile::{serialization::BasicRecordSerializer, Database, Error, Record};
+use data_pile::Database;
 use rand::{rngs::OsRng, RngCore};
 
 fn put_get(c: &mut Criterion) {
     const BATCH_SIZE: usize = 2048;
-    const MAX_KEY_LEN: u64 = 512;
     const MAX_VALUE_LEN: u64 = 4096;
 
     let tmp = tempfile::tempdir().unwrap();
-    let db = Database::new(tmp.path(), BasicRecordSerializer).unwrap();
+    let db = Database::new(tmp.path()).unwrap();
 
     let mut rng = OsRng;
 
-    let mut keys = Vec::new();
+    let mut number = 0;
 
     c.bench_function(&format!("put {} records per iteration", BATCH_SIZE), |b| {
         b.iter_batched(
             || {
-                let mut data: Vec<(Vec<u8>, Vec<u8>)> = Vec::with_capacity(BATCH_SIZE);
+                let mut data: Vec<Vec<u8>> = Vec::with_capacity(BATCH_SIZE);
 
                 for _i in 0..BATCH_SIZE {
-                    let key_len = (rng.next_u64() % MAX_KEY_LEN) as usize;
                     let value_len = (rng.next_u64() % MAX_VALUE_LEN) as usize;
-
-                    let mut key = vec![0u8; key_len];
                     let mut value = vec![0u8; value_len];
-
-                    rng.fill_bytes(&mut key);
                     rng.fill_bytes(&mut value);
 
-                    data.push((key, value));
+                    data.push(value);
                 }
+
+                number += BATCH_SIZE;
 
                 data
             },
             |data| {
-                let records: Vec<_> = data
-                    .iter()
-                    .map(|data| Record::new(&data.0, &data.0))
-                    .collect();
-                match db.append(&records) {
-                    Ok(_) => {
-                        let keys_new: Vec<_> = data.into_iter().map(|data| data.0).collect();
-                        keys.push(keys_new);
-                    }
-                    Err(Error::RecordExists(_)) => {}
-                    Err(e) => panic!(e),
-                }
+                let records: Vec<_> = data.iter().map(|data| data.as_ref()).collect();
+                db.append(&records).unwrap();
             },
             BatchSize::PerIteration,
         );
     });
 
-    let keys: Vec<_> = keys.into_iter().flatten().collect();
-
     c.bench_function("read random records", |b| {
         b.iter(|| {
-            let i = (rng.next_u64() as usize) % keys.len();
-            let _record = db.get(&keys[i]).unwrap();
+            let i = (rng.next_u64() as usize) % number;
+            let _record = db.get_by_seqno(i).unwrap();
         });
     });
 

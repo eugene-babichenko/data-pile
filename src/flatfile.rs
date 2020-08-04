@@ -1,5 +1,5 @@
-use crate::{Appender, Error, Record, RecordSerializer};
-use std::path::Path;
+use crate::{Appender, Error};
+use std::{io::Write, mem::size_of, path::Path};
 
 /// Flatfiles are the main database files that hold all keys and data.
 ///
@@ -25,18 +25,16 @@ impl FlatFile {
 
     /// Write an array of records to the drive. This function will block if
     /// another write is still in progress.
-    pub fn append<R>(&self, serializer: R, records: &[Record]) -> Result<(), Error>
-    where
-        R: RecordSerializer,
-    {
+    pub fn append(&self, records: &[&[u8]]) -> Result<(), Error> {
         let size_inc: usize = records
             .iter()
-            .fold(0, |value, record| value + serializer.size(&record));
+            .fold(0, |value, record| value + record.len() + size_of::<u64>());
 
         self.inner.append(size_inc, move |mut mmap| {
             for record in records {
-                serializer.serialize(record, &mut mmap);
-                mmap = &mut mmap[serializer.size(&record)..];
+                mmap.write_all(&(record.len() as u64).to_le_bytes()[..])
+                    .unwrap();
+                mmap.write_all(record).unwrap();
             }
         })
     }
@@ -46,12 +44,25 @@ impl FlatFile {
     /// record is returned. Note that this function do not check if the given
     /// `offset` is the start of an actual record, so you should be careful when
     /// using it.
-    pub fn get_record_at_offset<R>(&self, serializer: R, offset: usize) -> Option<Record>
-    where
-        R: RecordSerializer,
-    {
-        self.inner
-            .get_data(offset, move |mmap| serializer.deserialize(mmap))
+    pub fn get_record_at_offset(&self, offset: usize) -> Option<&[u8]> {
+        self.inner.get_data(offset, move |mut mmap| {
+            if mmap.len() < size_of::<u64>() {
+                return None;
+            }
+
+            let mut value_length_bytes = [0u8; size_of::<u64>()];
+            value_length_bytes.copy_from_slice(&mmap[..size_of::<u64>()]);
+            let value_length = u64::from_le_bytes(value_length_bytes) as usize;
+            mmap = &mmap[size_of::<u64>()..];
+
+            if mmap.len() < value_length {
+                return None;
+            }
+
+            let value = &mmap[..value_length];
+
+            Some(value)
+        })
     }
 
     pub fn len(&self) -> usize {
@@ -66,40 +77,27 @@ impl FlatFile {
 
 #[cfg(test)]
 mod tests {
-    use super::{FlatFile, Record};
-    use crate::{
-        serialization::{BasicRecordSerializer, RecordSerializer},
-        testutils::TestData,
-    };
+    use super::FlatFile;
+    use std::mem::size_of;
 
     #[quickcheck]
-    fn test_read_write(records: Vec<TestData>) {
+    fn test_read_write(records: Vec<Vec<u8>>) {
         if records.is_empty() {
             return;
         }
 
         let tmp = tempfile::NamedTempFile::new().unwrap();
 
-        let raw_records: Vec<_> = records
-            .iter()
-            .map(|record| Record::new(&record.key, &record.value))
-            .collect();
+        let raw_records: Vec<_> = records.iter().map(|x| x.as_ref()).collect();
 
         let flatfile = FlatFile::new(tmp.path()).unwrap();
-        flatfile
-            .append(BasicRecordSerializer, &raw_records)
-            .unwrap();
+        flatfile.append(&raw_records).unwrap();
 
         let mut offset = 0;
         for record in raw_records.iter() {
-            let drive_record = flatfile
-                .get_record_at_offset(BasicRecordSerializer, offset)
-                .unwrap();
-
-            assert_eq!(record.key(), drive_record.key());
-            assert_eq!(record.value(), drive_record.value());
-
-            offset += BasicRecordSerializer.size(&record);
+            let drive_record = flatfile.get_record_at_offset(offset).unwrap();
+            assert_eq!(*record, drive_record);
+            offset += drive_record.len() + size_of::<u64>();
         }
     }
 }
