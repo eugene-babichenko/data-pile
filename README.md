@@ -1,6 +1,7 @@
 # `pile` - a simple and fast append-only data store
 
-![Crates.io](https://img.shields.io/crates/v/data-pile)
+[![Crates.io](https://img.shields.io/crates/v/data-pile)](https://crates.io/crates/data-pile)
+[![codecov](https://codecov.io/gh/eugene-babichenko/data-pile/branch/master/graph/badge.svg)](https://codecov.io/gh/eugene-babichenko/data-pile)
 
 ## Design goals
 
