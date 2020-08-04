@@ -40,8 +40,6 @@ mod page_index;
 mod seqno;
 mod seqno_iter;
 mod shared_mmap;
-#[cfg(test)]
-mod testutils;
 
 use appender::Appender;
 pub use database::Database;
