@@ -86,7 +86,7 @@ jobs:
         run: cargo install cargo-tarpaulin
 
       - name: Check test coverage
-        run: cargo tarpaulin --out Xml
+        run: cargo tarpaulin --out Xml --ignore-tests
 
       - name: Upload coverage results
         env:
