@@ -39,7 +39,7 @@ impl SharedMmap {
 
     /// Get a sub-view. It will point to the same memory mapping as the parent
     /// mapping.
-    pub fn slice(&self, bounds: impl RangeBounds<usize>) -> Option<SharedMmap> {
+    pub fn slice(&self, bounds: impl RangeBounds<usize>) -> SharedMmap {
         let start = match bounds.start_bound() {
             Included(start) => *start,
             Excluded(start) => start + 1,
@@ -57,11 +57,11 @@ impl SharedMmap {
 
         let slice = unsafe { self.slice.add(start) };
 
-        Some(SharedMmap {
+        SharedMmap {
             mmap: self.mmap.clone(),
             len,
             slice,
-        })
+        }
     }
 
     fn get_ref(&self) -> &[u8] {

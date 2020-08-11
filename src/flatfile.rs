@@ -51,14 +51,14 @@ impl FlatFile {
             }
 
             let mut value_length_bytes = [0u8; size_of::<u64>()];
-            value_length_bytes.copy_from_slice(mmap.slice(..size_of::<u64>())?.as_ref());
+            value_length_bytes.copy_from_slice(mmap.slice(..size_of::<u64>()).as_ref());
             let value_length = u64::from_le_bytes(value_length_bytes) as usize;
 
             if mmap.len() < size_of::<u64>() + value_length {
                 return None;
             }
 
-            mmap.slice(size_of::<u64>()..(size_of::<u64>() + value_length))
+            Some(mmap.slice(size_of::<u64>()..(size_of::<u64>() + value_length)))
         })
     }
 

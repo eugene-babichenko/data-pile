@@ -98,7 +98,7 @@ impl GrowableMmap {
             offset,
             number,
         } = self.index.read().unwrap().find(address)?;
-        self.maps[number].slice((address - offset)..len)
+        Some(self.maps[number].slice((address - offset)..len))
     }
 
     pub fn snapshot(&self, end: usize) -> Result<impl AsRef<[u8]>, Error> {
