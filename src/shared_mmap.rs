@@ -7,7 +7,7 @@ use std::{
 };
 
 /// A structure that implements a view into memory mapping.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SharedMmap {
     mmap: Arc<MmapMut>,
     len: usize,

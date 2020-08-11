@@ -1,6 +1,6 @@
 [package]
 name = "data-pile"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Yevhenii Babichenko <eugene.babichenko@protonmail.com>"]
 edition = "2018"
 description = "A simple and fast append-only data store"
