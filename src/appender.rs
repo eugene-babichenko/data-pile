@@ -1,6 +1,6 @@
 //! Appenders are mmap'ed files intended for append-only use.
 
-use crate::{growable_mmap::GrowableMmap, Error};
+use crate::{growable_mmap::GrowableMmap, Error, SharedMmap};
 use std::{
     cell::UnsafeCell,
     fs::OpenOptions,
@@ -80,9 +80,9 @@ impl Appender {
 
     /// The whole data buffer is given to `f` which should return the data back
     /// or return None if something went wrong.
-    pub fn get_data<'a, F, U>(&'a self, offset: usize, f: F) -> Option<U>
+    pub fn get_data<F, U>(&self, offset: usize, f: F) -> Option<U>
     where
-        F: Fn(&'a [u8]) -> Option<U>,
+        F: Fn(SharedMmap) -> Option<U>,
     {
         let mmap = unsafe { self.mmap.get().as_ref().unwrap() };
         mmap.get_ref(offset).and_then(f)

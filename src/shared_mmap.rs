@@ -6,6 +6,8 @@ use std::{
     sync::Arc,
 };
 
+/// A structure that implements a view into memory mapping.
+#[derive(Clone)]
 pub struct SharedMmap {
     mmap: Arc<MmapMut>,
     len: usize,
@@ -27,54 +29,33 @@ impl SharedMmap {
         self.len
     }
 
-    pub fn flush(&self) -> Result<(), io::Error> {
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    pub(crate) fn flush(&self) -> Result<(), io::Error> {
         self.mmap.flush()
     }
 
+    /// Get a sub-view. It will point to the same memory mapping as the parent
+    /// mapping.
     pub fn slice(&self, bounds: impl RangeBounds<usize>) -> Option<SharedMmap> {
         let start = match bounds.start_bound() {
-            Included(start) => {
-                if *start >= self.len {
-                    *start
-                } else {
-                    return None;
-                }
-            }
-            Excluded(start) => {
-                if start + 1 >= self.len {
-                    start + 1
-                } else {
-                    return None;
-                }
-            }
+            Included(start) => *start,
+            Excluded(start) => start + 1,
             Unbounded => 0,
         };
 
         let end = match bounds.end_bound() {
-            Included(end) => {
-                if *end >= self.len {
-                    *end
-                } else {
-                    return None;
-                }
-            }
-            Excluded(end) => {
-                if end - 1 >= self.len {
-                    end - 1
-                } else {
-                    return None;
-                }
-            }
+            Included(end) => *end,
+            Excluded(end) => end - 1,
             Unbounded => self.len - 1,
         };
+        let end = std::cmp::min(end, self.len - 1);
 
-        let len = end - start;
+        let len = if start <= end { end - start + 1 } else { 0 };
 
-        if len == 0 {
-            return None;
-        }
-
-        let slice = unsafe { self.slice.offset(start as isize) };
+        let slice = unsafe { self.slice.add(start) };
 
         Some(SharedMmap {
             mmap: self.mmap.clone(),
@@ -82,20 +63,26 @@ impl SharedMmap {
             slice,
         })
     }
+
+    fn get_ref(&self) -> &[u8] {
+        unsafe { slice::from_raw_parts(self.slice, self.len) }
+    }
+
+    fn get_mut(&mut self) -> &mut [u8] {
+        unsafe { slice::from_raw_parts_mut(self.slice, self.len) }
+    }
 }
 
 unsafe impl Send for SharedMmap {}
 
 impl AsRef<[u8]> for SharedMmap {
     fn as_ref(&self) -> &[u8] {
-        unsafe { slice::from_raw_parts(self.slice, self.len) }
+        self.get_ref()
     }
 }
 
 impl AsMut<[u8]> for SharedMmap {
     fn as_mut(&mut self) -> &mut [u8] {
-        unsafe { slice::from_raw_parts_mut(self.slice, self.len) }
+        self.get_mut()
     }
 }
-
-// TODO implement `SliceIndex` when stabilized

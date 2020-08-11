@@ -92,13 +92,13 @@ impl GrowableMmap {
         self.maps.last_mut().map(|page| page.as_mut())
     }
 
-    pub fn get_ref(&self, address: usize) -> Option<&[u8]> {
+    pub fn get_ref(&self, address: usize) -> Option<SharedMmap> {
         let PageDescriptor {
             len,
             offset,
             number,
         } = self.index.read().unwrap().find(address)?;
-        Some(&self.maps[number].as_ref()[(address - offset)..len])
+        self.maps[number].slice((address - offset)..len)
     }
 
     pub fn snapshot(&self, end: usize) -> Result<impl AsRef<[u8]>, Error> {

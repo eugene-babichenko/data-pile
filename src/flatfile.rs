@@ -1,4 +1,4 @@
-use crate::{Appender, Error};
+use crate::{Appender, Error, SharedMmap};
 use std::{io::Write, mem::size_of, path::Path};
 
 /// Flatfiles are the main database files that hold all keys and data.
@@ -44,24 +44,21 @@ impl FlatFile {
     /// record is returned. Note that this function do not check if the given
     /// `offset` is the start of an actual record, so you should be careful when
     /// using it.
-    pub fn get_record_at_offset(&self, offset: usize) -> Option<&[u8]> {
-        self.inner.get_data(offset, move |mut mmap| {
+    pub fn get_record_at_offset(&self, offset: usize) -> Option<SharedMmap> {
+        self.inner.get_data(offset, move |mmap| {
             if mmap.len() < size_of::<u64>() {
                 return None;
             }
 
             let mut value_length_bytes = [0u8; size_of::<u64>()];
-            value_length_bytes.copy_from_slice(&mmap[..size_of::<u64>()]);
+            value_length_bytes.copy_from_slice(mmap.slice(..size_of::<u64>())?.as_ref());
             let value_length = u64::from_le_bytes(value_length_bytes) as usize;
-            mmap = &mmap[size_of::<u64>()..];
 
-            if mmap.len() < value_length {
+            if mmap.len() < size_of::<u64>() + value_length {
                 return None;
             }
 
-            let value = &mmap[..value_length];
-
-            Some(value)
+            mmap.slice(size_of::<u64>()..(size_of::<u64>() + value_length))
         })
     }
 
@@ -96,7 +93,7 @@ mod tests {
         let mut offset = 0;
         for record in raw_records.iter() {
             let drive_record = flatfile.get_record_at_offset(offset).unwrap();
-            assert_eq!(*record, drive_record);
+            assert_eq!(*record, drive_record.as_ref());
             offset += drive_record.len() + size_of::<u64>();
         }
     }

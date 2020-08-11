@@ -15,7 +15,7 @@ impl PageIndex {
     }
 
     pub fn add_page(&mut self, end: usize) {
-        let start = self.bounds.last().map(|x| *x).unwrap_or(0);
+        let start = self.bounds.last().copied().unwrap_or(0);
         assert!(start < end);
 
         if self.bounds.is_empty() {
@@ -34,7 +34,7 @@ impl PageIndex {
     }
 
     pub fn memory_size(&self) -> usize {
-        self.bounds.last().map(|x| *x).unwrap_or(0)
+        self.bounds.last().copied().unwrap_or(0)
     }
 }
 

@@ -35,7 +35,7 @@ impl SeqNoIndex {
 
         self.inner.get_data(offset, |mmap| {
             let mut key_length_bytes = [0u8; size_of::<u64>()];
-            key_length_bytes.copy_from_slice(&mmap[..size_of::<u64>()]);
+            key_length_bytes.copy_from_slice(&mmap.as_ref()[..size_of::<u64>()]);
 
             Some(u64::from_le_bytes(key_length_bytes))
         })
