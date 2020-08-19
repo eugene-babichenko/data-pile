@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.4.0] - 2020-08-19
 ### Changed
 - Changed the internal data format to remove lengths from the flatfile.
 - Zero-length entries are not legal now and will cause panics.
@@ -38,7 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In-memory B-tree for indexing by keys.
 - Possibility to have different record serialization approaches.
 
-[Unreleased]: https://github.com/eugene-babichenko/data-pile/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/eugene-babichenko/data-pile/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/eugene-babichenko/data-pile/releases/tag/v0.4.0
 [0.3.1]: https://github.com/eugene-babichenko/data-pile/releases/tag/v0.3.1
 [0.3.0]: https://github.com/eugene-babichenko/data-pile/releases/tag/v0.3.0
 [0.2.0]: https://github.com/eugene-babichenko/data-pile/releases/tag/v0.2.0
