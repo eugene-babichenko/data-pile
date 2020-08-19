@@ -40,14 +40,33 @@ impl SharedMmap {
     /// Get a sub-view. It will point to the same memory mapping as the parent
     /// mapping.
     pub fn slice(&self, bounds: impl RangeBounds<usize>) -> SharedMmap {
+        if self.len == 0 {
+            return SharedMmap {
+                len: 0,
+                ..self.clone()
+            };
+        }
         let start = match bounds.start_bound() {
             Included(start) => *start,
             Excluded(start) => start + 1,
             Unbounded => 0,
         };
 
+        if start >= self.len {
+            return SharedMmap {
+                len: 0,
+                ..self.clone()
+            };
+        }
+
         let end = match bounds.end_bound() {
             Included(end) => *end,
+            Excluded(end) if *end == 0 => {
+                return SharedMmap {
+                    len: 0,
+                    ..self.clone()
+                };
+            }
             Excluded(end) => end - 1,
             Unbounded => self.len - 1,
         };

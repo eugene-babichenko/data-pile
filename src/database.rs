@@ -1,6 +1,5 @@
 use crate::{flatfile::FlatFile, seqno::SeqNoIndex, Error, SeqNoIter, SharedMmap};
 use std::{
-    mem::size_of,
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -32,44 +31,6 @@ impl Database {
         let seqno_index_path = path.join("seqno");
         let seqno_index = Arc::new(SeqNoIndex::new(seqno_index_path)?);
 
-        let test_iter = SeqNoIter::new(flatfile.clone(), 0);
-
-        let mut data_bytes_read: usize = 0;
-        let mut seqno_bytes_read = 0;
-        let mut seqno_finished = false;
-        let mut records_read = 0;
-        let mut seqno_index_update = Vec::new();
-
-        for record in test_iter {
-            match seqno_index.get_pointer_to_value(records_read) {
-                Some(pointer) => {
-                    if pointer != data_bytes_read as u64 {
-                        return Err(Error::SeqNoIndexDamaged);
-                    }
-                    seqno_bytes_read += std::mem::size_of::<u64>();
-                }
-                None => {
-                    if seqno_finished {
-                        seqno_index_update.push(data_bytes_read as u64)
-                    } else {
-                        if seqno_bytes_read != seqno_index.len() {
-                            return Err(Error::SeqNoIndexDamaged);
-                        }
-                        seqno_finished = true;
-                        seqno_index_update.push(data_bytes_read as u64)
-                    }
-                }
-            }
-            data_bytes_read += record.len() + size_of::<u64>();
-            records_read += 1;
-        }
-
-        if data_bytes_read < flatfile.len() as usize {
-            return Err(Error::DataFileDamaged);
-        }
-
-        seqno_index.append(&seqno_index_update)?;
-
         let write_lock = Arc::new(Mutex::new(()));
 
         Ok(Database {
@@ -93,7 +54,7 @@ impl Database {
 
         for record in records.iter() {
             seqno_index_update.push(offset as u64);
-            offset += record.len() + size_of::<u64>();
+            offset += record.len();
         }
 
         self.seqno_index.append(&seqno_index_update)?;
@@ -108,21 +69,25 @@ impl Database {
 
     /// Get a record by its sequential number.
     pub fn get_by_seqno(&self, seqno: usize) -> Option<SharedMmap> {
-        let offset = self.seqno_index.get_pointer_to_value(seqno)?;
-        self.flatfile.get_record_at_offset(offset as usize)
+        let offset = self.seqno_index.get_pointer_to_value(seqno)? as usize;
+        let next_offset = self
+            .seqno_index
+            .get_pointer_to_value(seqno + 1)
+            .map(|value| value as usize)
+            .unwrap_or_else(|| self.flatfile.len());
+        dbg!(offset, next_offset);
+        let length = next_offset - offset;
+        self.flatfile.get_record_at_offset(offset, length)
     }
 
     /// Iterate records in the order they were added starting form the given
     /// sequential number.
     pub fn iter_from_seqno(&self, seqno: usize) -> Option<SeqNoIter> {
-        let offset = self.seqno_index.get_pointer_to_value(seqno)? as usize;
-        Some(SeqNoIter::new(self.flatfile.clone(), offset))
-    }
-    /// Get the underlying raw data. You can then use this data to recover a
-    /// database (for example, on another machine). To recover you will need to
-    /// write the snapshot data to a file `<database path>/data`.
-    pub fn snapshot(&self) -> Result<impl AsRef<[u8]>, Error> {
-        self.flatfile.snapshot()
+        Some(SeqNoIter::new(
+            self.flatfile.clone(),
+            self.seqno_index.clone(),
+            seqno,
+        ))
     }
 }
 
@@ -138,13 +103,19 @@ mod tests {
 
         let tmp = tempfile::tempdir().unwrap();
 
-        let records: Vec<_> = data.iter().map(|data| data.as_ref()).collect();
+        let records: Vec<_> = data
+            .iter()
+            .filter(|data| !data.is_empty())
+            .map(|data| data.as_ref())
+            .collect();
 
         let db = Database::new(tmp.path()).unwrap();
 
         db.append(&records).unwrap();
 
+        dbg!(records.len());
         for i in 0..records.len() {
+            dbg!(i, records[i]);
             let record = db.get_by_seqno(i).unwrap();
             assert_eq!(records[i], record.as_ref());
         }
@@ -157,33 +128,21 @@ mod tests {
             count += 1;
         }
         assert_eq!(count, records.len());
-
-        // test snapshot recovery
-
-        let tmp_new = tempfile::tempdir().unwrap();
-
-        let data_path_old = tmp.path().join("data");
-        let data_path_new = tmp_new.path().join("data");
-        std::fs::copy(data_path_old, data_path_new).unwrap();
-
-        let db_new = Database::new(tmp_new.path()).unwrap();
-
-        for i in 0..records.len() {
-            let record = db_new.get_by_seqno(i).unwrap();
-            assert_eq!(records[i], record.as_ref());
-        }
     }
 
     #[quickcheck]
     fn parallel_read_write(data1: Vec<Vec<u8>>, data2: Vec<Vec<u8>>) {
+        let data1: Vec<_> = data1.into_iter().filter(|data| !data.is_empty()).collect();
+        let data2: Vec<_> = data2.into_iter().filter(|data| !data.is_empty()).collect();
+
         if data1.is_empty() || data2.is_empty() {
             return;
         }
 
-        let records1: Vec<_> = data1.iter().map(|data| data.as_ref()).collect();
-
         let tmp = tempfile::tempdir().unwrap();
         let db = Database::new(tmp.path()).unwrap();
+
+        let records1: Vec<_> = data1.iter().map(|data| data.as_ref()).collect();
 
         db.append(&records1).unwrap();
 

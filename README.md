@@ -21,15 +21,6 @@ let value = b"some data";
 db.put(&value).unwrap();
 ```
 
-### Transferring the data
-
-- Get the raw data by using `Database::snapshot()`.
-- Copy it somewhere.
-- Create the root direcotry of the data store, create a file named `data` in it
-  and add all snapshot data into it.
-- Just start using the database: it will verify correctness and rebuild all
-  indexes.
-
 ### Notes
 
 Values are accessible only by their sequential numbers. You will need an

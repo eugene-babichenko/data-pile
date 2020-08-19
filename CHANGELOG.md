@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- Changed the internal data format to remove lengths from the flatfile.
+- Zero-length entries are not legal now and will cause panics.
+### Removed
+- Snapshot capability due to breaking changes in the data format. Now users
+  should just copy the whole directory.
 
 ## [0.3.1] - 2020-08-11
 ### Added
