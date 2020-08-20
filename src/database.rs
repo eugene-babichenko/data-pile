@@ -75,7 +75,6 @@ impl Database {
             .get_pointer_to_value(seqno + 1)
             .map(|value| value as usize)
             .unwrap_or_else(|| self.flatfile.len());
-        dbg!(offset, next_offset);
         let length = next_offset - offset;
         self.flatfile.get_record_at_offset(offset, length)
     }
@@ -113,9 +112,7 @@ mod tests {
 
         db.append(&records).unwrap();
 
-        dbg!(records.len());
         for i in 0..records.len() {
-            dbg!(i, records[i]);
             let record = db.get_by_seqno(i).unwrap();
             assert_eq!(records[i], record.as_ref());
         }

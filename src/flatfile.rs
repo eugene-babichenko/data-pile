@@ -52,7 +52,6 @@ impl FlatFile {
     /// using it.
     pub fn get_record_at_offset(&self, offset: usize, length: usize) -> Option<SharedMmap> {
         self.inner.get_data(offset, move |mmap| {
-            dbg!(offset, length, mmap.len());
             if mmap.len() < length {
                 return None;
             }
