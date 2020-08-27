@@ -95,36 +95,48 @@ mod tests {
     use super::Database;
 
     #[quickcheck]
-    fn read_write(data: Vec<Vec<u8>>) {
-        if data.is_empty() {
-            return;
-        }
-
-        let tmp = tempfile::tempdir().unwrap();
-
-        let records: Vec<_> = data
+    fn read_write(data1: Vec<Vec<u8>>, data2: Vec<Vec<u8>>) {
+        let records1: Vec<_> = data1
+            .iter()
+            .filter(|data| !data.is_empty())
+            .map(|data| data.as_ref())
+            .collect();
+        let records2: Vec<_> = data2
             .iter()
             .filter(|data| !data.is_empty())
             .map(|data| data.as_ref())
             .collect();
 
+        if data1.is_empty() || data2.is_empty() {
+            return;
+        }
+
+        let tmp = tempfile::tempdir().unwrap();
+
         let db = Database::new(tmp.path()).unwrap();
 
-        db.append(&records).unwrap();
+        db.append(&records1).unwrap();
 
-        for i in 0..records.len() {
+        for i in 0..records1.len() {
             let record = db.get_by_seqno(i).unwrap();
-            assert_eq!(records[i], record.as_ref());
+            assert_eq!(records1[i], record.as_ref());
         }
 
         let mut iter = db.iter_from_seqno(0).unwrap();
         let mut count = 0;
 
         while let Some(record) = iter.next() {
-            assert_eq!(records[count], record.as_ref());
+            assert_eq!(records1[count], record.as_ref());
             count += 1;
         }
-        assert_eq!(count, records.len());
+        assert_eq!(count, records1.len());
+
+        db.append(&records2).unwrap();
+
+        for i in records1.len()..(records1.len() + records2.len()) {
+            let record = db.get_by_seqno(i).unwrap();
+            assert_eq!(records2[i - records1.len()], record.as_ref());
+        }
     }
 
     #[quickcheck]
