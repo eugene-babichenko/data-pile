@@ -26,7 +26,7 @@ impl GrowableMmap {
             > 0
         {
             let mmap = SharedMmap::new(
-                unsafe { MmapOptions::new().map_mut(&growable_mmap.file) }.map_err(Error::Mmap)?,
+                unsafe { MmapOptions::new().map(&growable_mmap.file) }.map_err(Error::Mmap)?,
             );
             growable_mmap.index.add_page(mmap.len());
             growable_mmap.maps.push(mmap);
@@ -57,7 +57,7 @@ impl GrowableMmap {
 
         page.flush().map_err(Error::Flush)?;
 
-        let page = SharedMmap::new(page);
+        let page = SharedMmap::new(page.make_read_only().map_err(Error::Protect)?);
         self.maps.push(page);
         self.index.add_page(new_len);
 

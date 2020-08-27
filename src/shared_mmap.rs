@@ -1,4 +1,4 @@
-use memmap::MmapMut;
+use memmap::Mmap;
 use std::{
     ops::{Bound::*, RangeBounds},
     slice,
@@ -8,13 +8,13 @@ use std::{
 /// A structure that implements a view into memory mapping.
 #[derive(Debug, Clone)]
 pub struct SharedMmap {
-    mmap: Arc<MmapMut>,
+    mmap: Arc<Mmap>,
     len: usize,
     slice: *const u8,
 }
 
 impl SharedMmap {
-    pub(crate) fn new(mmap: MmapMut) -> SharedMmap {
+    pub(crate) fn new(mmap: Mmap) -> SharedMmap {
         let len = mmap.len();
         let slice = mmap.as_ptr();
         SharedMmap {

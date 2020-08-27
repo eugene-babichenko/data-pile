@@ -21,6 +21,8 @@ pub enum Error {
     Flush(io::Error),
     /// Failed to get file metadata
     Metadata(io::Error),
+    /// Failed to make a memory mapping page immutable
+    Protect(io::Error),
 }
 
 impl error::Error for Error {
@@ -35,6 +37,7 @@ impl error::Error for Error {
             Error::Extend(source) => Some(source),
             Error::Flush(source) => Some(source),
             Error::Metadata(source) => Some(source),
+            Error::Protect(source) => Some(source),
         }
     }
 }
@@ -54,6 +57,7 @@ impl fmt::Display for Error {
             Error::Extend(_) => write!(f, "failed to extend a database file"),
             Error::Flush(_) => write!(f, "failed to flush database records to disk"),
             Error::Metadata(_) => write!(f, "failed to get file metadata"),
+            Error::Protect(_) => write!(f, "failed to make a memory mapping page immutable"),
         }
     }
 }
