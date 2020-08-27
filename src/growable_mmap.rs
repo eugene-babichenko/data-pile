@@ -2,18 +2,18 @@ use crate::{
     page_index::{PageDescriptor, PageIndex},
     Error, SharedMmap,
 };
-use memmap::MmapOptions;
-use std::{fs::File, sync::RwLock};
+use memmap::{MmapMut, MmapOptions};
+use std::fs::File;
 
 pub struct GrowableMmap {
-    index: RwLock<PageIndex>,
+    index: PageIndex,
     maps: Vec<SharedMmap>,
     file: File,
 }
 
 impl GrowableMmap {
     pub fn new(file: File) -> Result<Self, Error> {
-        let index = RwLock::new(PageIndex::new());
+        let index = PageIndex::new();
         let maps = vec![];
 
         let mut growable_mmap = GrowableMmap { index, maps, file };
@@ -28,68 +28,40 @@ impl GrowableMmap {
             let mmap = SharedMmap::new(
                 unsafe { MmapOptions::new().map_mut(&growable_mmap.file) }.map_err(Error::Mmap)?,
             );
-            growable_mmap.index.write().unwrap().add_page(mmap.len());
+            growable_mmap.index.add_page(mmap.len());
             growable_mmap.maps.push(mmap);
         }
 
         Ok(growable_mmap)
     }
 
-    pub fn grow(&mut self, starting_point: usize, add: usize) -> Result<(), Error> {
-        let mut index = self.index.write().unwrap();
-        if index.is_empty() {
-            assert_eq!(
-                0, starting_point,
-                "should not specify non-zero offset for a zero-sized file"
-            );
-            assert_ne!(0, add, "no increase in file size");
+    pub fn grow(&self, add: usize) -> Result<MmapMut, Error> {
+        assert_ne!(add, 0, "no grow in file size");
 
-            self.file.set_len(add as u64).map_err(Error::Extend)?;
-            index.add_page(add);
-            self.maps.push(SharedMmap::new(
-                unsafe { MmapOptions::new().map_mut(&self.file) }.map_err(Error::Mmap)?,
-            ));
+        let current_len = self.index.memory_size();
 
-            return Ok(());
-        }
-
-        let current_len = index.memory_size();
-        assert!(
-            starting_point < current_len,
-            "cannot start ({}) outside of the file boundary ({})",
-            starting_point,
-            current_len
-        );
-
-        let new_len = 1 + starting_point + add;
-        assert!(new_len > current_len, "no increase in file size");
-
+        let new_len = current_len + add;
         self.file.set_len(new_len as u64).map_err(Error::Extend)?;
 
-        let mmap = SharedMmap::new(
-            unsafe {
-                MmapOptions::new()
-                    .offset((starting_point + 1) as u64)
-                    .map_mut(&self.file)
-            }
-            .map_err(Error::Mmap)?,
-        );
-        self.maps.push(mmap);
-        index.add_page(new_len);
-
-        Ok(())
-    }
-
-    pub fn flush_last(&self) -> Result<(), Error> {
-        if let Some(page) = self.maps.last() {
-            page.flush().map_err(Error::Flush)?;
+        unsafe {
+            MmapOptions::new()
+                .offset(current_len as u64)
+                .map_mut(&self.file)
         }
-
-        Ok(())
+        .map_err(Error::Mmap)
     }
 
-    pub fn get_mut_last(&mut self) -> Option<&mut [u8]> {
-        self.maps.last_mut().map(|page| page.as_mut())
+    pub fn append_page(&mut self, page: MmapMut) -> Result<(), Error> {
+        let current_len = self.index.memory_size();
+        let new_len = current_len + page.len();
+
+        page.flush().map_err(Error::Flush)?;
+
+        let page = SharedMmap::new(page);
+        self.maps.push(page);
+        self.index.add_page(new_len);
+
+        Ok(())
     }
 
     pub fn get_ref(&self, address: usize) -> Option<SharedMmap> {
@@ -97,7 +69,7 @@ impl GrowableMmap {
             len,
             offset,
             number,
-        } = self.index.read().unwrap().find(address)?;
+        } = self.index.find(address)?;
         Some(self.maps[number].slice((address - offset)..len))
     }
 }

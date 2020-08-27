@@ -64,14 +64,10 @@ impl Appender {
         let actual_size = self.actual_size.load(Ordering::Relaxed);
 
         let new_file_size = actual_size + size_inc;
-        let starting_point = if actual_size == 0 { 0 } else { actual_size - 1 };
 
-        mmap.grow(starting_point, size_inc)?;
-        let page = mmap.get_mut_last().unwrap();
-
-        f(page);
-
-        mmap.flush_last()?;
+        let mut page = mmap.grow(size_inc)?;
+        f(page.as_mut());
+        mmap.append_page(page)?;
 
         self.actual_size.store(new_file_size, Ordering::Relaxed);
 

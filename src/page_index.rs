@@ -29,10 +29,6 @@ impl PageIndex {
         find_impl(&self.bounds, 0, address)
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.bounds.is_empty()
-    }
-
     pub fn memory_size(&self) -> usize {
         self.bounds.last().copied().unwrap_or(0)
     }
