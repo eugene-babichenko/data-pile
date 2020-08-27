@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `SharedMmap` is now `Sync`.
 ### Removed
 * The possibility to mutate `SharedMmap`
+### Fixed
+* Instability of parallel reads and writes on macOS.
 
 ## [0.4.0] - 2020-08-19
 ### Changed

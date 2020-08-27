@@ -47,8 +47,6 @@ impl Database {
 
         let initial_size = self.flatfile.len();
 
-        self.flatfile.append(records)?;
-
         let mut seqno_index_update = Vec::with_capacity(records.len());
         let mut offset = initial_size;
 
@@ -58,6 +56,7 @@ impl Database {
         }
 
         self.seqno_index.append(&seqno_index_update)?;
+        self.flatfile.append(records)?;
 
         Ok(())
     }
