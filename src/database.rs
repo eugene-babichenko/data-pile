@@ -1,6 +1,6 @@
 use crate::{flatfile::FlatFile, seqno::SeqNoIndex, Error, SeqNoIter, SharedMmap};
 use std::{
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
@@ -14,7 +14,7 @@ pub struct Database {
 
 impl Database {
     /// Open the database. Will create one if not exists.
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+    pub fn file<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let path = path.as_ref();
 
         if !path.exists() {
@@ -26,9 +26,21 @@ impl Database {
         }
 
         let flatfile_path = path.join("data");
-        let flatfile = Arc::new(FlatFile::new(flatfile_path)?);
-
         let seqno_index_path = path.join("seqno");
+
+        Self::new(Some(flatfile_path), Some(seqno_index_path))
+    }
+
+    /// Open an in-memory database.
+    pub fn memory() -> Result<Self, Error> {
+        Self::new(None, None)
+    }
+
+    pub(crate) fn new(
+        flatfile_path: Option<PathBuf>,
+        seqno_index_path: Option<PathBuf>,
+    ) -> Result<Self, Error> {
+        let flatfile = Arc::new(FlatFile::new(flatfile_path)?);
         let seqno_index = Arc::new(SeqNoIndex::new(seqno_index_path)?);
 
         let write_lock = Arc::new(Mutex::new(()));
@@ -93,8 +105,7 @@ impl Database {
 mod tests {
     use super::Database;
 
-    #[quickcheck]
-    fn read_write(data1: Vec<Vec<u8>>, data2: Vec<Vec<u8>>) {
+    fn read_write(db: Database, data1: Vec<Vec<u8>>, data2: Vec<Vec<u8>>) {
         let records1: Vec<_> = data1
             .iter()
             .filter(|data| !data.is_empty())
@@ -109,10 +120,6 @@ mod tests {
         if data1.is_empty() || data2.is_empty() {
             return;
         }
-
-        let tmp = tempfile::tempdir().unwrap();
-
-        let db = Database::new(tmp.path()).unwrap();
 
         db.append(&records1).unwrap();
 
@@ -139,16 +146,25 @@ mod tests {
     }
 
     #[quickcheck]
-    fn parallel_read_write(data1: Vec<Vec<u8>>, data2: Vec<Vec<u8>>) {
+    fn read_write_memory(data1: Vec<Vec<u8>>, data2: Vec<Vec<u8>>) {
+        let db = Database::memory().unwrap();
+        read_write(db, data1, data2);
+    }
+
+    #[quickcheck]
+    fn read_write_storage(data1: Vec<Vec<u8>>, data2: Vec<Vec<u8>>) {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::file(tmp.path()).unwrap();
+        read_write(db, data1, data2);
+    }
+
+    fn parallel_read_write(db: Database, data1: Vec<Vec<u8>>, data2: Vec<Vec<u8>>) {
         let data1: Vec<_> = data1.into_iter().filter(|data| !data.is_empty()).collect();
         let data2: Vec<_> = data2.into_iter().filter(|data| !data.is_empty()).collect();
 
         if data1.is_empty() || data2.is_empty() {
             return;
         }
-
-        let tmp = tempfile::tempdir().unwrap();
-        let db = Database::new(tmp.path()).unwrap();
 
         let records1: Vec<_> = data1.iter().map(|data| data.as_ref()).collect();
 
@@ -176,5 +192,18 @@ mod tests {
             let i = i - data1.len();
             assert_eq!(data2[i], record.as_ref());
         }
+    }
+
+    #[quickcheck]
+    fn parallel_read_write_memory(data1: Vec<Vec<u8>>, data2: Vec<Vec<u8>>) {
+        let db = Database::memory().unwrap();
+        parallel_read_write(db, data1, data2);
+    }
+
+    #[quickcheck]
+    fn parallel_read_write_storage(data1: Vec<Vec<u8>>, data2: Vec<Vec<u8>>) {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::file(tmp.path()).unwrap();
+        parallel_read_write(db, data1, data2);
     }
 }

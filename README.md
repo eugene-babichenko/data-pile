@@ -16,7 +16,7 @@
 
 ```rust
 use data_pile::Database;
-let db = Database::new("./pile").unwrap();
+let db = Database::file("./pile").unwrap();
 let value = b"some data";
 db.put(&value).unwrap();
 ```

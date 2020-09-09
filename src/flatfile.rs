@@ -1,5 +1,5 @@
 use crate::{Appender, Error, SharedMmap};
-use std::{io::Write, path::Path};
+use std::{io::Write, path::PathBuf};
 
 /// Flatfiles are the main database files that hold all keys and data.
 ///
@@ -19,7 +19,7 @@ impl FlatFile {
     /// # Arguments
     ///
     /// * `path` - the path to the file. It will be created if not exists.
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+    pub fn new(path: Option<PathBuf>) -> Result<Self, Error> {
         Appender::new(path).map(|inner| FlatFile { inner })
     }
 
@@ -83,7 +83,7 @@ mod tests {
             .map(|x| x.as_ref())
             .collect();
 
-        let flatfile = FlatFile::new(tmp.path()).unwrap();
+        let flatfile = FlatFile::new(Some(tmp.path().to_path_buf())).unwrap();
         flatfile.append(&raw_records).unwrap();
 
         let mut offset = 0;

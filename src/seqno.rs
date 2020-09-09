@@ -1,5 +1,5 @@
 use crate::{Appender, Error};
-use std::{mem::size_of, path::Path};
+use std::{mem::size_of, path::PathBuf};
 
 /// Index from the sequential number of a record to its location in a flatfile.
 pub(crate) struct SeqNoIndex {
@@ -12,7 +12,7 @@ impl SeqNoIndex {
     /// # Arguments
     ///
     /// * `path` - the path to the file. It will be created if not exists.
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+    pub fn new(path: Option<PathBuf>) -> Result<Self, Error> {
         Appender::new(path).map(|inner| Self { inner })
     }
 
@@ -58,7 +58,7 @@ mod tests {
 
         let tmp = tempfile::NamedTempFile::new().unwrap();
 
-        let index = SeqNoIndex::new(tmp.path()).unwrap();
+        let index = SeqNoIndex::new(Some(tmp.path().to_path_buf())).unwrap();
         index.append(&records).unwrap();
 
         for (i, record) in records.iter().enumerate() {

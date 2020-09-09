@@ -7,7 +7,7 @@ fn put_get(c: &mut Criterion) {
     const MAX_VALUE_LEN: u64 = 4096;
 
     let tmp = tempfile::tempdir().unwrap();
-    let db = Database::new(tmp.path()).unwrap();
+    let db = Database::file(tmp.path()).unwrap();
 
     let mut rng = OsRng;
 

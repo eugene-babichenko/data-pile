@@ -5,7 +5,7 @@ use std::{
     cell::UnsafeCell,
     fs::OpenOptions,
     marker::Sync,
-    path::Path,
+    path::PathBuf,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -28,20 +28,24 @@ impl Appender {
     /// * `map_size` - the size of the memory map that will be used. This map
     ///   limits the size of the file. If the `map_size` is smaller than the
     ///   size of the file, an error will be returned.
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
-        let path = path.as_ref();
+    pub fn new(path: Option<PathBuf>) -> Result<Self, Error> {
+        let (file, actual_size) = if let Some(path) = path {
+            let file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .open(&path)
+                .map_err(|err| Error::FileOpen(path.clone(), err))?;
 
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(path)
-            .map_err(|err| Error::FileOpen(path.to_path_buf(), err))?;
+            let actual_size = file
+                .metadata()
+                .map_err(|err| Error::FileOpen(path.clone(), err))?
+                .len() as usize;
 
-        let actual_size = file
-            .metadata()
-            .map_err(|err| Error::FileOpen(path.to_path_buf(), err))?
-            .len() as usize;
+            (Some(file), actual_size)
+        } else {
+            (None, 0)
+        };
 
         let mmap = UnsafeCell::new(GrowableMmap::new(file)?);
         let actual_size = AtomicUsize::from(actual_size);

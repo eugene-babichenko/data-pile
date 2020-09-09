@@ -8,28 +8,23 @@ use std::fs::File;
 pub struct GrowableMmap {
     index: PageIndex,
     maps: Vec<SharedMmap>,
-    file: File,
+    file: Option<File>,
 }
 
 impl GrowableMmap {
-    pub fn new(file: File) -> Result<Self, Error> {
+    pub fn new(file: Option<File>) -> Result<Self, Error> {
         let index = PageIndex::new();
         let maps = vec![];
 
         let mut growable_mmap = GrowableMmap { index, maps, file };
 
-        if growable_mmap
-            .file
-            .metadata()
-            .map_err(Error::Metadata)?
-            .len()
-            > 0
-        {
-            let mmap = SharedMmap::new(
-                unsafe { MmapOptions::new().map(&growable_mmap.file) }.map_err(Error::Mmap)?,
-            );
-            growable_mmap.index.add_page(mmap.len());
-            growable_mmap.maps.push(mmap);
+        if let Some(file) = &growable_mmap.file {
+            if file.metadata().map_err(Error::Metadata)?.len() > 0 {
+                let mmap =
+                    SharedMmap::new(unsafe { MmapOptions::new().map(&file) }.map_err(Error::Mmap)?);
+                growable_mmap.index.add_page(mmap.len());
+                growable_mmap.maps.push(mmap);
+            }
         }
 
         Ok(growable_mmap)
@@ -38,17 +33,18 @@ impl GrowableMmap {
     pub fn grow(&self, add: usize) -> Result<MmapMut, Error> {
         assert_ne!(add, 0, "no grow in file size");
 
-        let current_len = self.index.memory_size();
+        if let Some(file) = &self.file {
+            let current_len = self.index.memory_size();
 
-        let new_len = current_len + add;
-        self.file.set_len(new_len as u64).map_err(Error::Extend)?;
+            let new_len = current_len + add;
 
-        unsafe {
-            MmapOptions::new()
-                .offset(current_len as u64)
-                .map_mut(&self.file)
+            file.set_len(new_len as u64).map_err(Error::Extend)?;
+
+            return unsafe { MmapOptions::new().offset(current_len as u64).map_mut(file) }
+                .map_err(Error::Mmap);
         }
-        .map_err(Error::Mmap)
+
+        MmapOptions::new().len(add).map_anon().map_err(Error::Mmap)
     }
 
     pub fn append_page(&mut self, page: MmapMut) -> Result<(), Error> {
