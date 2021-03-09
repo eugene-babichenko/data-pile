@@ -19,7 +19,7 @@ fn put_get(c: &mut Criterion) {
                 let mut data: Vec<Vec<u8>> = Vec::with_capacity(BATCH_SIZE);
 
                 for _i in 0..BATCH_SIZE {
-                    let value_len = (rng.next_u64() % MAX_VALUE_LEN) as usize;
+                    let value_len = (rng.next_u64() % MAX_VALUE_LEN) as usize + 1;
                     let mut value = vec![0u8; value_len];
                     rng.fill_bytes(&mut value);
 
