@@ -2,7 +2,7 @@ use crate::{
     page_index::{PageDescriptor, PageIndex},
     Error, SharedMmap,
 };
-use memmap::{MmapMut, MmapOptions};
+use memmap2::{MmapMut, MmapOptions};
 use std::fs::File;
 
 pub struct GrowableMmap {
