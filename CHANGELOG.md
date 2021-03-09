@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2021-03-09
+### Changed
+* Migrate to `memmap2`. This is a maintained fork of `memmap`.
+
 ## [0.6.0] - 2020-09-09
 ### Added
 * In-memory databases.
