@@ -15,19 +15,13 @@ categories = ["database"]
 [dependencies]
 memmap2 = "0.2.1"
 
-tempfile = { version = "3.1", optional = true }
-criterion = { version = "0.3.3", optional = true }
-rand = { version = "0.7.3", optional = true }
-
 [dev-dependencies]
 tempfile = "3.1"
 quickcheck = "0.9"
 quickcheck_macros = "0.9"
-
-[features]
-with-bench = ["tempfile", "criterion", "rand"]
+criterion = "0.3.3"
+rand = "0.7.3"
 
 [[bench]]
 harness = false
 name = "put_get"
-required-features = ["with-bench"]

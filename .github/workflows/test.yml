@@ -38,7 +38,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: bench
-          args: --bench put_get --features with-bench --no-run
+          args: --no-run
 
   lint:
     name: Run lints
