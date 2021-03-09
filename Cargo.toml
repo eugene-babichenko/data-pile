@@ -25,3 +25,6 @@ rand = "0.7.3"
 [[bench]]
 harness = false
 name = "put_get"
+
+[profile.bench]
+debug = true
