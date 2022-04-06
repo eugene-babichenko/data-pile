@@ -10,7 +10,7 @@ pub enum Error {
     /// Database path already exists and does not point to a directory
     PathNotDir,
     /// The record with this key already exists.
-    RecordExists(Vec<u8>),
+    RecordExists(usize),
     /// Records in the data file are incorrect.
     DataFileDamaged,
     /// Sequential number index is broken
@@ -51,7 +51,7 @@ impl fmt::Display for Error {
                 f,
                 "database path already exists and does not point to a directory"
             ),
-            Error::RecordExists(id) => write!(f, "a record with id {} already exists", hex(&id)),
+            Error::RecordExists(id) => write!(f, "a record with id {} already exists", id),
             Error::DataFileDamaged => write!(f, "data file looks damaged"),
             Error::SeqNoIndexDamaged => write!(f, "sequential number index file looks damaged"),
             Error::Extend(_) => write!(f, "failed to extend a database file"),
@@ -62,6 +62,7 @@ impl fmt::Display for Error {
     }
 }
 
+#[allow(unused)]
 fn hex(bytes: &[u8]) -> String {
     let mut s = String::with_capacity(bytes.len() * 2);
     for byte in bytes {

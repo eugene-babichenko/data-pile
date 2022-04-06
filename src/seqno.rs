@@ -44,6 +44,11 @@ impl SeqNoIndex {
             Some(u64::from_le_bytes(key_length_bytes))
         })
     }
+
+    /// Get the location of a record with the given number.
+    pub fn next_free_sequence(&self) -> usize {
+        self.inner.size() / size_of::<u64>()
+    }
 }
 
 #[cfg(test)]
@@ -64,6 +69,24 @@ mod tests {
         for (i, record) in records.iter().enumerate() {
             let drive_record = index.get_pointer_to_value(i).unwrap();
             assert_eq!(*record, drive_record);
+        }
+    }
+
+    #[quickcheck]
+    fn test_seq_number(records: Vec<u64>) {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+
+        let index = SeqNoIndex::new(Some(tmp.path().to_path_buf())).unwrap();
+        assert_eq!(index.next_free_sequence(), 0);
+        assert!(index.append(&records).is_ok());
+        assert_eq!(index.next_free_sequence(), records.len());
+        assert!(index
+            .get_pointer_to_value(index.next_free_sequence())
+            .is_none());
+        if !records.is_empty() {
+            assert!(index
+                .get_pointer_to_value(index.next_free_sequence() - 1)
+                .is_some());
         }
     }
 }

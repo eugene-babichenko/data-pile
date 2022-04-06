@@ -55,7 +55,46 @@ impl Database {
     /// Write an array of records to the database. This function will block if
     /// another write is still in progress.
     pub fn append(&self, records: &[&[u8]]) -> Result<(), Error> {
+        if records.is_empty() {
+            return Ok(());
+        }
+
         let _write_guard = self.write_lock.lock().unwrap();
+
+        let initial_size = self.flatfile.len();
+
+        let mut seqno_index_update = Vec::with_capacity(records.len());
+        let mut offset = initial_size;
+
+        for record in records.iter() {
+            seqno_index_update.push(offset as u64);
+            offset += record.len();
+        }
+
+        self.seqno_index.append(&seqno_index_update)?;
+        self.flatfile.append(records)?;
+
+        Ok(())
+    }
+
+    /// Write an array of records to the database. This function will block if
+    /// another write is still in progress.
+    pub fn append_with_seqno_check(
+        &self,
+        records: &[&[u8]],
+        write_from: usize,
+    ) -> Result<(), Error> {
+        if records.is_empty() {
+            return Ok(());
+        }
+
+        let _write_guard = self.write_lock.lock().unwrap();
+
+        // next_free_sequence called under lock, so the value is actual
+        // this check is mandatory if we treat seqno as keys
+        if self.seqno_index.next_free_sequence() > write_from {
+            return Err(Error::RecordExists(write_from));
+        }
 
         let initial_size = self.flatfile.len();
 
@@ -122,22 +161,27 @@ mod tests {
         }
 
         db.append(&records1).unwrap();
+        assert!(db
+            .append_with_seqno_check(&records1, records1.len().saturating_sub(1))
+            .is_err());
 
-        for i in 0..records1.len() {
+        for (i, original_record) in records1.iter().enumerate() {
             let record = db.get_by_seqno(i).unwrap();
-            assert_eq!(records1[i], record.as_ref());
+            assert_eq!(*original_record, record.as_ref());
         }
 
-        let mut iter = db.iter_from_seqno(0).unwrap();
+        let iter = db.iter_from_seqno(0).unwrap();
         let mut count = 0;
 
-        while let Some(record) = iter.next() {
+        for record in iter {
             assert_eq!(records1[count], record.as_ref());
             count += 1;
         }
         assert_eq!(count, records1.len());
 
-        db.append(&records2).unwrap();
+        assert!(db
+            .append_with_seqno_check(&records2, records1.len())
+            .is_ok());
 
         for i in records1.len()..(records1.len() + records2.len()) {
             let record = db.get_by_seqno(i).unwrap();
@@ -180,9 +224,9 @@ mod tests {
             data2
         });
 
-        for i in 0..records1.len() {
+        for (i, original_record) in records1.iter().enumerate() {
             let record = db.get_by_seqno(i).unwrap();
-            assert_eq!(records1[i], record.as_ref());
+            assert_eq!(*original_record, record.as_ref());
         }
 
         let data2 = write_thread.join().unwrap();
