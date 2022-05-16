@@ -109,6 +109,18 @@ impl Database {
             seqno,
         ))
     }
+
+    pub fn last(&self) -> Option<SharedMmap> {
+        self.get_by_seqno(self.len().saturating_sub(1))
+    }
+
+    pub fn len(&self) -> usize {
+        self.seqno_index.size()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 #[cfg(test)]
@@ -138,6 +150,9 @@ mod tests {
             assert_eq!(*original_record, record.as_ref());
         }
 
+        assert_eq!(*records1.last().unwrap(), db.last().unwrap().as_ref());
+        assert_eq!(records1.len(), db.len());
+
         let iter = db.iter_from_seqno(0).unwrap();
         let mut count = 0;
 
@@ -156,6 +171,9 @@ mod tests {
             let record = db.get_by_seqno(i).unwrap();
             assert_eq!(records2[i - records1.len()], record.as_ref());
         }
+
+        assert_eq!(*records2.last().unwrap(), db.last().unwrap().as_ref());
+        assert_eq!(records1.len() + records2.len(), db.len());
     }
 
     #[quickcheck]

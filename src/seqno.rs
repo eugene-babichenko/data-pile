@@ -47,6 +47,10 @@ impl SeqNoIndex {
             Some(u64::from_le_bytes(key_length_bytes))
         })
     }
+
+    pub fn size(&self) -> usize {
+        self.inner.size() / size_of::<u64>()
+    }
 }
 
 #[cfg(test)]
