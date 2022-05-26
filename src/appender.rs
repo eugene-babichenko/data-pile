@@ -1,6 +1,6 @@
 //! Appenders are mmap'ed files intended for append-only use.
 
-use crate::{growable_mmap::GrowableMmap, Error, SharedMmap};
+use crate::{growable_mmap::GrowableMmap, Error};
 use std::{
     cell::UnsafeCell,
     fs::OpenOptions,
@@ -65,15 +65,12 @@ impl Appender {
         }
 
         let mmap = unsafe { self.mmap.get().as_mut().unwrap() };
-        let actual_size = self.actual_size.load(Ordering::Relaxed);
+        let actual_size = self.actual_size.load(Ordering::SeqCst);
 
         let new_file_size = actual_size + size_inc;
 
-        let mut page = mmap.grow(size_inc)?;
-        f(page.as_mut());
-        mmap.append_page(page)?;
-
-        self.actual_size.store(new_file_size, Ordering::Release);
+        mmap.grow_and_apply(size_inc, f)?;
+        self.actual_size.store(new_file_size, Ordering::SeqCst);
 
         Ok(())
     }
@@ -82,14 +79,14 @@ impl Appender {
     /// or return None if something went wrong.
     pub fn get_data<F, U>(&self, offset: usize, f: F) -> Option<U>
     where
-        F: Fn(SharedMmap) -> Option<U>,
+        F: Fn(&[u8]) -> Option<U>,
     {
         let mmap = unsafe { self.mmap.get().as_ref().unwrap() };
-        mmap.get_ref(offset).and_then(f)
+        mmap.get_ref_and_apply(offset, f)
     }
 
     pub fn size(&self) -> usize {
-        self.actual_size.load(Ordering::Acquire)
+        self.actual_size.load(Ordering::SeqCst)
     }
 }
 

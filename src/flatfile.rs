@@ -1,4 +1,4 @@
-use crate::{Appender, Error, SharedMmap};
+use crate::{Appender, Error};
 use std::{io::Write, path::PathBuf};
 
 /// Flatfiles are the main database files that hold all keys and data.
@@ -25,7 +25,7 @@ impl FlatFile {
 
     /// Write an array of records to the drive. This function will block if
     /// another write is still in progress.
-    pub fn append(&self, records: &[&[u8]]) -> Result<(), Error> {
+    pub fn append<'a>(&'a self, records: &[&[u8]]) -> Result<(), Error> {
         if records.is_empty() {
             return Ok(());
         }
@@ -50,13 +50,13 @@ impl FlatFile {
     /// record is returned. Note that this function do not check if the given
     /// `offset` is the start of an actual record, so you should be careful when
     /// using it.
-    pub fn get_record_at_offset(&self, offset: usize, length: usize) -> Option<SharedMmap> {
+    pub fn get_record_at_offset(&self, offset: usize, length: usize) -> Option<Vec<u8>> {
         self.inner.get_data(offset, move |mmap| {
             if mmap.len() < length {
                 return None;
             }
 
-            Some(mmap.slice(..length))
+            Some(mmap[..length].to_vec())
         })
     }
 
@@ -89,7 +89,7 @@ mod tests {
         let mut offset = 0;
         for record in raw_records.iter() {
             let drive_record = flatfile.get_record_at_offset(offset, record.len()).unwrap();
-            assert_eq!(*record, drive_record.as_ref());
+            assert_eq!(*record, drive_record.as_slice());
             offset += drive_record.len();
         }
     }

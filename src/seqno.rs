@@ -18,7 +18,7 @@ impl SeqNoIndex {
 
     /// Add records to index. This function will block if another write is still
     /// in progress.
-    pub fn append(&self, records: &[u64]) -> Result<Option<usize>, Error> {
+    pub fn append<'a>(&'a self, records: &[u64]) -> Result<Option<usize>, Error> {
         if records.is_empty() {
             return Ok(None);
         }

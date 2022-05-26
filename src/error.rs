@@ -23,6 +23,8 @@ pub enum Error {
     Metadata(io::Error),
     /// Failed to make a memory mapping page immutable
     Protect(io::Error),
+    Lock,
+    InvalidState,
 }
 
 impl error::Error for Error {
@@ -38,6 +40,8 @@ impl error::Error for Error {
             Error::Flush(source) => Some(source),
             Error::Metadata(source) => Some(source),
             Error::Protect(source) => Some(source),
+            Error::Lock => None,
+            Error::InvalidState => None,
         }
     }
 }
@@ -58,6 +62,8 @@ impl fmt::Display for Error {
             Error::Flush(_) => write!(f, "failed to flush database records to disk"),
             Error::Metadata(_) => write!(f, "failed to get file metadata"),
             Error::Protect(_) => write!(f, "failed to make a memory mapping page immutable"),
+            Error::Lock => write!(f, "failed to lock the state"),
+            Error::InvalidState => write!(f, "consistency broken"),
         }
     }
 }

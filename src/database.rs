@@ -1,4 +1,4 @@
-use crate::{flatfile::FlatFile, seqno::SeqNoIndex, Error, SeqNoIter, SharedMmap};
+use crate::{flatfile::FlatFile, seqno::SeqNoIndex, Error, SeqNoIter};
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -89,7 +89,7 @@ impl Database {
     }
 
     /// Get a record by its sequential number.
-    pub fn get_by_seqno(&self, seqno: usize) -> Option<SharedMmap> {
+    pub fn get_by_seqno(&self, seqno: usize) -> Option<Vec<u8>> {
         let offset = self.seqno_index.get_pointer_to_value(seqno)? as usize;
         let next_offset = self
             .seqno_index
@@ -110,7 +110,7 @@ impl Database {
         ))
     }
 
-    pub fn last(&self) -> Option<SharedMmap> {
+    pub fn last(&self) -> Option<Vec<u8>> {
         self.get_by_seqno(self.len().saturating_sub(1))
     }
 
@@ -147,17 +147,17 @@ mod tests {
 
         for (i, original_record) in records1.iter().enumerate() {
             let record = db.get_by_seqno(i).unwrap();
-            assert_eq!(*original_record, record.as_ref());
+            assert_eq!(*original_record, record.as_slice().as_ref());
         }
 
-        assert_eq!(*records1.last().unwrap(), db.last().unwrap().as_ref());
+        assert_eq!(*records1.last().unwrap(), db.last().unwrap().as_slice());
         assert_eq!(records1.len(), db.len());
 
         let iter = db.iter_from_seqno(0).unwrap();
         let mut count = 0;
 
         for record in iter {
-            assert_eq!(records1[count], record.as_ref());
+            assert_eq!(records1[count], record.as_slice());
             count += 1;
         }
         assert_eq!(count, records1.len());
@@ -169,10 +169,10 @@ mod tests {
 
         for i in records1.len()..(records1.len() + records2.len()) {
             let record = db.get_by_seqno(i).unwrap();
-            assert_eq!(records2[i - records1.len()], record.as_ref());
+            assert_eq!(records2[i - records1.len()], record.as_slice());
         }
 
-        assert_eq!(*records2.last().unwrap(), db.last().unwrap().as_ref());
+        assert_eq!(*records2.last().unwrap(), db.last().unwrap().as_slice());
         assert_eq!(records1.len() + records2.len(), db.len());
     }
 
@@ -208,21 +208,27 @@ mod tests {
 
             write_db.append(&records2).unwrap();
 
+            eprintln!("appended");
             data2
         });
 
         for (i, original_record) in records1.iter().enumerate() {
             let record = db.get_by_seqno(i).unwrap();
-            assert_eq!(*original_record, record.as_ref());
+            assert_eq!(*original_record, record.as_slice());
         }
+
+        eprintln!("kekkk");
+
 
         let data2 = write_thread.join().unwrap();
 
         for i in data1.len()..(data1.len() + data2.len()) {
             let record = db.get_by_seqno(i).unwrap();
             let i = i - data1.len();
-            assert_eq!(data2[i], record.as_ref());
+            assert_eq!(data2[i], record.as_slice());
         }
+        eprintln!("lolll");
+
     }
 
     #[quickcheck]
