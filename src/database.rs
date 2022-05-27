@@ -253,7 +253,7 @@ mod tests {
     #[test]
     fn big_write_memory() {
         let one_record_size = 1024;
-        let records = 500000;
+        let records = 100000;
         let db = Database::memory().unwrap();
         big_write_test(db, one_record_size, records);
     }
@@ -264,7 +264,7 @@ mod tests {
         let db = Database::file(tmp.path()).unwrap();
 
         let one_record_size = 1024;
-        let records = 500000;
+        let records = 100000;
         big_write_test(db, one_record_size, records);
     }
 }
