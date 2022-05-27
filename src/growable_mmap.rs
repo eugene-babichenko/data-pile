@@ -122,14 +122,11 @@ impl GrowableMmap {
         }
     }
 
-    pub fn get_new_mmap_size(&self, add: usize, active_mmap: Option<usize>) -> usize {
+    pub fn get_new_mmap_size(&self, add: usize, active_mmap_size: Option<usize>) -> usize {
         match self.file {
             None => add,
             Some(_) => {
-                let active_mmap = match active_mmap {
-                    None => 128,
-                    Some(len) => len * 2,
-                };
+                let active_mmap = active_mmap_size.unwrap_or(2048);
                 max(add, active_mmap * 2)
             }
         }
@@ -139,7 +136,9 @@ impl GrowableMmap {
         if let Some(file) = &self.file {
             file.set_len((offset + new_mmap_size) as u64)
                 .map_err(Error::Extend)?;
-            unsafe { MmapOptions::new().offset(offset as u64).map_mut(file) }.map_err(Error::Mmap)
+            unsafe { MmapOptions::new()
+                .len(new_mmap_size)
+                .offset(offset as u64).map_mut(file) }.map_err(Error::Mmap)
         } else {
             MmapOptions::new()
                 .len(new_mmap_size)

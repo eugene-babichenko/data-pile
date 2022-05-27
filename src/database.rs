@@ -235,4 +235,38 @@ mod tests {
         let db = Database::file(tmp.path()).unwrap();
         parallel_read_write(db, data1, data2);
     }
+
+    fn big_write_test(db: Database, size_one_record: u64, write_count: u64) {
+        let record: Vec<u8> = (0..size_one_record)
+            .map(|i| (i % 256) as u8)
+            .collect();
+        let records = vec![record.as_slice()];
+
+        for _ in 0..write_count {
+            db.append(&records).unwrap();
+        }
+
+        for i in 0..write_count {
+            let found = db.get_by_seqno(i as usize).unwrap();
+            assert_eq!(record, found);
+        }
+    }
+
+    #[test]
+    fn big_write_memory() {
+        let one_record_size = 1024;
+        let records = 500000;
+        let db = Database::memory().unwrap();
+        big_write_test(db, one_record_size, records);
+    }
+
+    #[test]
+    fn big_write_storage() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::file(tmp.path()).unwrap();
+
+        let one_record_size = 1024;
+        let records = 500000;
+        big_write_test(db, one_record_size, records);
+    }
 }
