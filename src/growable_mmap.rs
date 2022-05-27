@@ -21,6 +21,14 @@ struct Storage {
     inactive_mmaps: InactiveMmaps,
     active_map: Option<ActiveMmap>,
 }
+
+/// the struct has an active mutable mmap and inactive tail
+/// if we have enough space we add records to the active mmap
+/// if not we slice the active mmap to the actual end of writes and put it to inactive mmaps
+/// then we create a new mmap with 2x size from previous
+/// if 2x is not enough we create an mmap with size of the data
+///
+/// TODO: make inactive mmaps locked separately from active mmap / replace the vector with thread-safe solution
 pub struct GrowableMmap {
     storage: RwLock<Storage>,
     file: Option<File>,
