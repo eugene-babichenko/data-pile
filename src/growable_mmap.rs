@@ -67,10 +67,7 @@ impl GrowableMmap {
     {
         assert_ne!(add, 0, "no grow in file size");
 
-        let mut storage_guard = self
-            .storage
-            .write()
-            .map_err(|_| -> Error { Error::Lock })?;
+        let mut storage_guard = self.storage.write().map_err(|_| -> Error { Error::Lock })?;
         let start_write_from = match &mut storage_guard.active_map {
             None => {
                 let new_mmap_size = self.get_new_mmap_size(add, None);
@@ -101,7 +98,6 @@ impl GrowableMmap {
                     new_mmap.flush().map_err(Error::Flush)?;
 
                     swap(&mut new_mmap, &mut active_mmap.mmap);
-
 
                     active_mmap.len = new_mmap_size;
 
@@ -144,9 +140,13 @@ impl GrowableMmap {
         if let Some(file) = &self.file {
             file.set_len((offset + new_mmap_size) as u64)
                 .map_err(Error::Extend)?;
-            unsafe { MmapOptions::new()
-                .len(new_mmap_size)
-                .offset(offset as u64).map_mut(file) }.map_err(Error::Mmap)
+            unsafe {
+                MmapOptions::new()
+                    .len(new_mmap_size)
+                    .offset(offset as u64)
+                    .map_mut(file)
+            }
+            .map_err(Error::Mmap)
         } else {
             MmapOptions::new()
                 .len(new_mmap_size)

@@ -237,9 +237,7 @@ mod tests {
     }
 
     fn big_write_test(db: Database, size_one_record: u64, write_count: u64) {
-        let record: Vec<u8> = (0..size_one_record)
-            .map(|i| (i % 256) as u8)
-            .collect();
+        let record: Vec<u8> = (0..size_one_record).map(|i| (i % 256) as u8).collect();
         let records = vec![record.as_slice()];
 
         for _ in 0..write_count {
