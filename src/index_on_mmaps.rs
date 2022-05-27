@@ -5,7 +5,10 @@ pub struct SingleMmapIndex {
 
 impl SingleMmapIndex {
     pub fn new(start: usize) -> Self {
-        Self { internal_bounds: Vec::new(), start }
+        Self {
+            internal_bounds: Vec::new(),
+            start,
+        }
     }
 
     pub fn last_global_index(&self) -> usize {
@@ -32,19 +35,26 @@ impl SingleMmapIndex {
     }
 
     pub fn find(&self, address: usize) -> Option<IndexDescriptor> {
+        if address < self.start {
+            return None;
+        }
         match self.internal_bounds.binary_search(&(address - self.start)) {
             Ok(mmap_offset_position) => {
                 if address - self.start == self.internal_bounds.last().copied().unwrap_or(0usize) {
-                    return None
+                    return None;
                 }
                 let mmap_offset = self.internal_bounds[mmap_offset_position];
-                let len = self.internal_bounds.get(mmap_offset_position + 1).unwrap_or(&mmap_offset) - mmap_offset;
+                let len = self
+                    .internal_bounds
+                    .get(mmap_offset_position + 1)
+                    .unwrap_or(&mmap_offset)
+                    - mmap_offset;
                 Some(IndexDescriptor {
                     mmap_number: 0,
                     mmap_offset,
-                    len
+                    len,
                 })
-            },
+            }
             Err(position) => {
                 let upper = self.internal_bounds[position];
                 let mmap_offset = address - self.start;
@@ -53,9 +63,8 @@ impl SingleMmapIndex {
                     mmap_offset,
                     len: upper - mmap_offset,
                 })
-            },
+            }
         }
-
     }
 }
 
@@ -79,20 +88,26 @@ impl IndexOnMmaps {
         if mmap_index.is_empty() {
             return;
         }
-        let current_end = self.mmaps.last().map(|last| last.last_global_index()).unwrap_or(0);
+        let current_end = self
+            .mmaps
+            .last()
+            .map(|last| last.last_global_index())
+            .unwrap_or(0);
         assert_eq!(current_end, mmap_index.start);
 
         self.mmaps.push(mmap_index);
     }
 
     pub fn find(&self, address: usize) -> Option<IndexDescriptor> {
-        let mmap_number = match self.mmaps.binary_search_by_key(&address, |mmap_index| -> usize {
-            if mmap_index.start <= address && address < mmap_index.last_global_index() {
-                address
-            } else {
-                mmap_index.start
-            }
-        }) {
+        let mmap_number = match self
+            .mmaps
+            .binary_search_by_key(&address, |mmap_index| -> usize {
+                if mmap_index.start <= address && address < mmap_index.last_global_index() {
+                    address
+                } else {
+                    mmap_index.start
+                }
+            }) {
             Ok(position) => position,
             Err(_) => return None,
         };
@@ -106,14 +121,17 @@ impl IndexOnMmaps {
     }
 
     pub fn memory_size(&self) -> usize {
-        self.mmaps.last().map(|mmap_index| mmap_index.last_global_index()).unwrap_or(0)
+        self.mmaps
+            .last()
+            .map(|mmap_index| mmap_index.last_global_index())
+            .unwrap_or(0)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::index_on_mmaps::SingleMmapIndex;
     use super::{IndexDescriptor, IndexOnMmaps};
+    use crate::index_on_mmaps::SingleMmapIndex;
 
     #[test]
     fn index() {

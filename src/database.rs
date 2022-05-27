@@ -147,7 +147,7 @@ mod tests {
 
         for (i, original_record) in records1.iter().enumerate() {
             let record = db.get_by_seqno(i).unwrap();
-            assert_eq!(*original_record, record.as_slice().as_ref());
+            assert_eq!(*original_record, record.as_slice());
         }
 
         assert_eq!(*records1.last().unwrap(), db.last().unwrap().as_slice());
@@ -204,11 +204,8 @@ mod tests {
         let write_db = db.clone();
 
         let write_thread = std::thread::spawn(move || {
-            let records2: Vec<_> = data2.iter().map(|data| data.as_ref()).collect();
-
+            let records2: Vec<&[u8]> = data2.iter().map(|data| data.as_ref()).collect();
             write_db.append(&records2).unwrap();
-
-            eprintln!("appended");
             data2
         });
 
@@ -217,9 +214,6 @@ mod tests {
             assert_eq!(*original_record, record.as_slice());
         }
 
-        eprintln!("kekkk");
-
-
         let data2 = write_thread.join().unwrap();
 
         for i in data1.len()..(data1.len() + data2.len()) {
@@ -227,8 +221,6 @@ mod tests {
             let i = i - data1.len();
             assert_eq!(data2[i], record.as_slice());
         }
-        eprintln!("lolll");
-
     }
 
     #[quickcheck]

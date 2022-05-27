@@ -18,7 +18,7 @@ impl SeqNoIndex {
 
     /// Add records to index. This function will block if another write is still
     /// in progress.
-    pub fn append<'a>(&'a self, records: &[u64]) -> Result<Option<usize>, Error> {
+    pub fn append(&self, records: &[u64]) -> Result<Option<usize>, Error> {
         if records.is_empty() {
             return Ok(None);
         }
@@ -42,7 +42,7 @@ impl SeqNoIndex {
 
         self.inner.get_data(offset, |mmap| {
             let mut key_length_bytes = [0u8; size_of::<u64>()];
-            key_length_bytes.copy_from_slice(&mmap.as_ref()[..size_of::<u64>()]);
+            key_length_bytes.copy_from_slice(&mmap[..size_of::<u64>()]);
 
             Some(u64::from_le_bytes(key_length_bytes))
         })

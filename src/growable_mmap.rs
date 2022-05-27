@@ -17,9 +17,12 @@ struct InactiveMmaps {
     maps: Vec<SharedMmap>,
 }
 
+struct Storage {
+    inactive_mmaps: InactiveMmaps,
+    active_map: Option<ActiveMmap>,
+}
 pub struct GrowableMmap {
-    inactive_mmaps: RwLock<InactiveMmaps>,
-    active_map: RwLock<Option<ActiveMmap>>,
+    storage: RwLock<Storage>,
     file: Option<File>,
 }
 
@@ -40,8 +43,10 @@ impl GrowableMmap {
         }
 
         let growable_mmap = GrowableMmap {
-            inactive_mmaps: RwLock::new(InactiveMmaps { index, maps }),
-            active_map: RwLock::new(None),
+            storage: RwLock::new(Storage {
+                inactive_mmaps: InactiveMmaps { index, maps },
+                active_map: None,
+            }),
             file,
         };
 
@@ -54,11 +59,11 @@ impl GrowableMmap {
     {
         assert_ne!(add, 0, "no grow in file size");
 
-        let mut active_map_guard = self
-            .active_map
+        let mut storage_guard = self
+            .storage
             .write()
             .map_err(|_| -> Error { Error::Lock })?;
-        let start_write_from = match active_map_guard.as_mut() {
+        let start_write_from = match &mut storage_guard.active_map {
             None => {
                 let new_mmap_size = self.get_new_mmap_size(add, None);
                 let new_mmap = self.create_mmap(new_mmap_size, 0usize)?;
@@ -67,7 +72,7 @@ impl GrowableMmap {
                 let mut single_mmap_index = SingleMmapIndex::new(0usize);
                 single_mmap_index.append(add);
 
-                *active_map_guard = Some(ActiveMmap {
+                storage_guard.active_map = Some(ActiveMmap {
                     len: new_mmap_size,
                     mmap: new_mmap,
                     bounds: single_mmap_index,
@@ -82,11 +87,6 @@ impl GrowableMmap {
                     active_mmap.bounds.append(current_mmap_end + add);
                     current_mmap_end
                 } else {
-                    let mut inactive_mmaps_guard = self
-                        .inactive_mmaps
-                        .write()
-                        .map_err(|_| -> Error { Error::Lock })?;
-
                     let new_mmap_size = self.get_new_mmap_size(add, Some(active_mmap.len));
                     let mut new_mmap =
                         self.create_mmap(new_mmap_size, active_mmap.bounds.last_global_index())?;
@@ -94,24 +94,25 @@ impl GrowableMmap {
 
                     swap(&mut new_mmap, &mut active_mmap.mmap);
 
-                    inactive_mmaps_guard.maps.push(
-                        SharedMmap::new(new_mmap.make_read_only().map_err(Error::Protect)?)
-                            .slice(..current_mmap_end),
-                    );
 
                     active_mmap.len = new_mmap_size;
 
-                    let mut new_bounds = SingleMmapIndex::new(active_mmap.bounds.last_global_index());
+                    let mut new_bounds =
+                        SingleMmapIndex::new(active_mmap.bounds.last_global_index());
                     new_bounds.append(add);
                     swap(&mut new_bounds, &mut active_mmap.bounds);
-                    inactive_mmaps_guard.index.add_mmap(new_bounds);
+                    storage_guard.inactive_mmaps.index.add_mmap(new_bounds);
+                    storage_guard.inactive_mmaps.maps.push(
+                        SharedMmap::new(new_mmap.make_read_only().map_err(Error::Protect)?)
+                            .slice(..current_mmap_end),
+                    );
 
                     0usize
                 }
             }
         };
 
-        match active_map_guard.as_mut() {
+        match storage_guard.active_map.as_mut() {
             None => Err(Error::InvalidState),
             Some(active_mmap) => {
                 f(&mut active_mmap.mmap.as_mut()[start_write_from..]);
@@ -136,13 +137,9 @@ impl GrowableMmap {
 
     pub fn create_mmap(&self, new_mmap_size: usize, offset: usize) -> Result<MmapMut, Error> {
         if let Some(file) = &self.file {
-            file.set_len((offset + new_mmap_size) as u64).map_err(Error::Extend)?;
-            unsafe {
-                MmapOptions::new()
-                    .offset(offset as u64)
-                    .map_mut(file)
-            }
-            .map_err(Error::Mmap)
+            file.set_len((offset + new_mmap_size) as u64)
+                .map_err(Error::Extend)?;
+            unsafe { MmapOptions::new().offset(offset as u64).map_mut(file) }.map_err(Error::Mmap)
         } else {
             MmapOptions::new()
                 .len(new_mmap_size)
@@ -155,31 +152,25 @@ impl GrowableMmap {
     where
         F: Fn(&[u8]) -> Option<U>,
     {
-        let inactive_mmaps_guard = if let Ok(inactive_mmaps_guard) = self.inactive_mmaps.read() {
-            inactive_mmaps_guard
+        let storage_guard = if let Ok(storage) = self.storage.read() {
+            storage
         } else {
             return None;
         };
 
-        if address < inactive_mmaps_guard.index.memory_size() {
+        if address < storage_guard.inactive_mmaps.index.memory_size() {
             let IndexDescriptor {
                 mmap_number,
                 mmap_offset,
                 len,
-            } = inactive_mmaps_guard.index.find(address)?;
+            } = storage_guard.inactive_mmaps.index.find(address)?;
 
-            return f(inactive_mmaps_guard.maps[mmap_number]
+            return f(storage_guard.inactive_mmaps.maps[mmap_number]
                 .slice(mmap_offset..mmap_offset + len)
                 .as_ref());
         }
 
-        let active_mmap_guard = if let Ok(active_mmap_guard) = self.active_map.read() {
-            active_mmap_guard
-        } else {
-            return None;
-        };
-
-        match active_mmap_guard.as_ref() {
+        match storage_guard.active_map.as_ref() {
             None => None,
             Some(active_mmap) => {
                 let IndexDescriptor {
