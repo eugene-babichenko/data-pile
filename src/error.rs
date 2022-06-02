@@ -1,4 +1,4 @@
-use std::{error, fmt, fmt::Write, io, path::PathBuf};
+use std::{error, fmt, io, path::PathBuf};
 
 /// Datbase error.
 #[derive(Debug)]
@@ -60,13 +60,4 @@ impl fmt::Display for Error {
             Error::Protect(_) => write!(f, "failed to make a memory mapping page immutable"),
         }
     }
-}
-
-#[allow(unused)]
-fn hex(bytes: &[u8]) -> String {
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        write!(&mut s, "{:2x}", byte).unwrap();
-    }
-    s
 }

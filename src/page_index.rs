@@ -64,8 +64,8 @@ mod tests {
         let data = [34, 42, 67, 96, 103, 420];
         let mut index = PageIndex::new();
 
-        for item in data.iter() {
-            index.add_page(*item);
+        for item in data.iter().copied() {
+            index.add_page(item);
         }
 
         assert_eq!(
