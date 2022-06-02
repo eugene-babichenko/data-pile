@@ -28,20 +28,39 @@ impl Database {
         let flatfile_path = path.join("data");
         let seqno_index_path = path.join("seqno");
 
-        Self::new(Some(flatfile_path), Some(seqno_index_path))
+        Self::new(Some(flatfile_path), Some(seqno_index_path), true)
+    }
+
+    /// Open the database. Will create one if not exists.
+    pub fn file_readonly<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        let path = path.as_ref();
+
+        if !path.exists() {
+            return Err(Error::PathNotFound);
+        }
+
+        if !path.is_dir() {
+            return Err(Error::PathNotDir);
+        }
+
+        let flatfile_path = path.join("data");
+        let seqno_index_path = path.join("seqno");
+
+        Self::new(Some(flatfile_path), Some(seqno_index_path), false)
     }
 
     /// Open an in-memory database.
     pub fn memory() -> Result<Self, Error> {
-        Self::new(None, None)
+        Self::new(None, None, true)
     }
 
     pub(crate) fn new(
         flatfile_path: Option<PathBuf>,
         seqno_index_path: Option<PathBuf>,
+        writable: bool,
     ) -> Result<Self, Error> {
-        let flatfile = Arc::new(FlatFile::new(flatfile_path)?);
-        let seqno_index = Arc::new(SeqNoIndex::new(seqno_index_path)?);
+        let flatfile = Arc::new(FlatFile::new(flatfile_path, writable)?);
+        let seqno_index = Arc::new(SeqNoIndex::new(seqno_index_path, writable)?);
 
         let write_lock = Arc::new(Mutex::new(()));
 
@@ -250,12 +269,43 @@ mod tests {
         }
     }
 
+    fn reopen_test(db: Database, size_one_record: u64, write_count: u64, iteration: u64) {
+        let record: Vec<u8> = (0..size_one_record).map(|i| (i % 256) as u8).collect();
+        let records = vec![record.as_slice()];
+
+        assert_eq!(iteration * write_count, db.len() as u64);
+        for i in 0..write_count {
+            db.append(&records).unwrap();
+            assert_eq!(iteration * write_count + i + 1, db.len() as u64);
+        }
+
+        for i in 0..(iteration + 1) * write_count {
+            let found = db.get_by_seqno(i as usize).unwrap();
+            assert_eq!(record, found);
+        }
+
+        assert_eq!((iteration + 1) * write_count, db.len() as u64);
+        drop(db);
+    }
+
     #[test]
     fn big_write_memory() {
         let one_record_size = 1024;
         let records = 100000;
         let db = Database::memory().unwrap();
         big_write_test(db, one_record_size, records);
+    }
+
+    #[test]
+    fn backup_test_storage() {
+        let one_record_size = 1024;
+        let records = 20000;
+
+        let tmp = tempfile::tempdir().unwrap();
+        for iteration in 0..5 {
+            let db = Database::file(tmp.path()).unwrap();
+            reopen_test(db, one_record_size, records, iteration);
+        }
     }
 
     #[test]

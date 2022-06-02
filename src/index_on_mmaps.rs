@@ -145,6 +145,7 @@ mod tests {
             }
             index.add_mmap(single_mmap_index);
         }
+        assert_eq!(index.memory_size(), 420);
 
         assert_eq!(
             Some(IndexDescriptor {

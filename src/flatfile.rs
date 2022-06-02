@@ -19,8 +19,8 @@ impl FlatFile {
     /// # Arguments
     ///
     /// * `path` - the path to the file. It will be created if not exists.
-    pub fn new(path: Option<PathBuf>) -> Result<Self, Error> {
-        Appender::new(path).map(|inner| FlatFile { inner })
+    pub fn new(path: Option<PathBuf>, writable: bool) -> Result<Self, Error> {
+        Appender::new(path, writable).map(|inner| FlatFile { inner })
     }
 
     /// Write an array of records to the drive. This function will block if
@@ -40,8 +40,9 @@ impl FlatFile {
 
         self.inner.append(size_inc, move |mut mmap| {
             for record in records {
-                mmap.write_all(record).unwrap();
+                mmap.write_all(record).map_err(Error::MmapWrite)?;
             }
+            Ok(())
         })
     }
 
@@ -83,7 +84,7 @@ mod tests {
             .map(|x| x.as_ref())
             .collect();
 
-        let flatfile = FlatFile::new(Some(tmp.path().to_path_buf())).unwrap();
+        let flatfile = FlatFile::new(Some(tmp.path().to_path_buf()), true).unwrap();
         flatfile.append(&raw_records).unwrap();
 
         let mut offset = 0;
