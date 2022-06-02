@@ -73,7 +73,7 @@ impl Appender {
         f(page.as_mut());
         mmap.append_page(page)?;
 
-        self.actual_size.store(new_file_size, Ordering::Relaxed);
+        self.actual_size.store(new_file_size, Ordering::Release);
 
         Ok(())
     }
@@ -89,7 +89,7 @@ impl Appender {
     }
 
     pub fn size(&self) -> usize {
-        self.actual_size.load(Ordering::Relaxed)
+        self.actual_size.load(Ordering::Acquire)
     }
 }
 

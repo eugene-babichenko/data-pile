@@ -55,6 +55,16 @@ impl Database {
     /// Write an array of records to the database. This function will block if
     /// another write is still in progress.
     pub fn append(&self, records: &[&[u8]]) -> Result<(), Error> {
+        self.append_get_seqno(records).map(|_| ())
+    }
+
+    /// Write an array of records to the database. This function will block if
+    /// another write is still in progress.
+    pub fn append_get_seqno(&self, records: &[&[u8]]) -> Result<Option<usize>, Error> {
+        if records.is_empty() {
+            return Ok(None);
+        }
+
         let _write_guard = self.write_lock.lock().unwrap();
 
         let initial_size = self.flatfile.len();
@@ -67,10 +77,10 @@ impl Database {
             offset += record.len();
         }
 
-        self.seqno_index.append(&seqno_index_update)?;
+        let seqno = self.seqno_index.append(&seqno_index_update)?;
         self.flatfile.append(records)?;
 
-        Ok(())
+        Ok(seqno)
     }
 
     /// Put a single record (not recommended).
@@ -99,6 +109,18 @@ impl Database {
             seqno,
         ))
     }
+
+    pub fn last(&self) -> Option<SharedMmap> {
+        self.get_by_seqno(self.len().saturating_sub(1))
+    }
+
+    pub fn len(&self) -> usize {
+        self.seqno_index.size()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 #[cfg(test)]
@@ -123,26 +145,35 @@ mod tests {
 
         db.append(&records1).unwrap();
 
-        for i in 0..records1.len() {
+        for (i, original_record) in records1.iter().enumerate() {
             let record = db.get_by_seqno(i).unwrap();
-            assert_eq!(records1[i], record.as_ref());
+            assert_eq!(*original_record, record.as_ref());
         }
 
-        let mut iter = db.iter_from_seqno(0).unwrap();
+        assert_eq!(*records1.last().unwrap(), db.last().unwrap().as_ref());
+        assert_eq!(records1.len(), db.len());
+
+        let iter = db.iter_from_seqno(0).unwrap();
         let mut count = 0;
 
-        while let Some(record) = iter.next() {
+        for record in iter {
             assert_eq!(records1[count], record.as_ref());
             count += 1;
         }
         assert_eq!(count, records1.len());
 
-        db.append(&records2).unwrap();
+        assert_eq!(
+            db.append_get_seqno(&records2).unwrap().unwrap(),
+            records1.len()
+        );
 
         for i in records1.len()..(records1.len() + records2.len()) {
             let record = db.get_by_seqno(i).unwrap();
             assert_eq!(records2[i - records1.len()], record.as_ref());
         }
+
+        assert_eq!(*records2.last().unwrap(), db.last().unwrap().as_ref());
+        assert_eq!(records1.len() + records2.len(), db.len());
     }
 
     #[quickcheck]
@@ -180,9 +211,9 @@ mod tests {
             data2
         });
 
-        for i in 0..records1.len() {
+        for (i, original_record) in records1.iter().enumerate() {
             let record = db.get_by_seqno(i).unwrap();
-            assert_eq!(records1[i], record.as_ref());
+            assert_eq!(*original_record, record.as_ref());
         }
 
         let data2 = write_thread.join().unwrap();

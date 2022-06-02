@@ -21,7 +21,7 @@ impl GrowableMmap {
         if let Some(file) = &growable_mmap.file {
             if file.metadata().map_err(Error::Metadata)?.len() > 0 {
                 let mmap =
-                    SharedMmap::new(unsafe { MmapOptions::new().map(&file) }.map_err(Error::Mmap)?);
+                    SharedMmap::new(unsafe { MmapOptions::new().map(file) }.map_err(Error::Mmap)?);
                 growable_mmap.index.add_page(mmap.len());
                 growable_mmap.maps.push(mmap);
             }
