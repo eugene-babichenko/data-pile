@@ -277,13 +277,15 @@ impl GrowableMmap {
         if let Some(file) = &self.file {
             file.set_len((offset + new_mmap_size) as u64)
                 .map_err(Error::Extend)?;
-            unsafe {
+            let mmap = unsafe {
                 MmapOptions::new()
                     .len(new_mmap_size)
                     .offset(offset as u64)
                     .map_mut(file)
             }
-            .map_err(Error::Mmap)
+            .map_err(Error::Mmap)?;
+            mmap.flush().map_err(Error::Flush)?;
+            Ok(mmap)
         } else {
             MmapOptions::new()
                 .len(new_mmap_size)
