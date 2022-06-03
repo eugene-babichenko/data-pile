@@ -60,10 +60,15 @@ impl Database {
         writable: bool,
     ) -> Result<Self, Error> {
         let flatfile = Arc::new(FlatFile::new(flatfile_path, writable)?);
-        let flatfile_elements = flatfile.elements_count()?;
-
         let seqno_index = Arc::new(SeqNoIndex::new(seqno_index_path, writable)?);
-        if seqno_index.size() != flatfile_elements {
+
+        let seqno_size = seqno_index.size();
+        if seqno_size > 0
+            && seqno_index
+                .get_pointer_to_value(seqno_size - 1)
+                .map(|pos| pos >= flatfile.memory_size() as u64)
+                .unwrap_or(true)
+        {
             return Err(Error::SeqNoIndexDamaged);
         }
 
@@ -304,7 +309,7 @@ mod tests {
     #[test]
     fn backup_test_storage() {
         let one_record_size = 1024;
-        let records = 200000;
+        let records = 20000;
 
         let tmp = tempfile::tempdir().unwrap();
         for iteration in 0..5 {
@@ -319,7 +324,7 @@ mod tests {
         let db = Database::file(tmp.path()).unwrap();
 
         let one_record_size = 1024;
-        let records = 1000000;
+        let records = 100000;
         big_write_test(db, one_record_size, records);
     }
 }

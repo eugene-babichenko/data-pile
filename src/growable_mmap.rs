@@ -16,7 +16,6 @@ impl StorageHeader {
     pub const HEADER_SIZE: usize = size_of::<usize>() * 2;
 
     const MEM_SIZE_OFFSET: usize = 0;
-    const ELEMENTS_COUNT_OFFSET: usize = size_of::<usize>();
 
     pub fn new(file: &Option<File>) -> Result<StorageHeader, Error> {
         if let Some(file) = &file {
@@ -40,7 +39,6 @@ impl StorageHeader {
 
             let mut header = StorageHeader { mmap };
             header.store_storage_size(0)?;
-            header.store_elements_count(0)?;
             header.flush()?;
             return Ok(header);
         }
@@ -61,21 +59,6 @@ impl StorageHeader {
     pub fn store_storage_size(&mut self, new_size: usize) -> Result<(), Error> {
         let mut mmap = &mut self.mmap.as_mut()
             [StorageHeader::MEM_SIZE_OFFSET..StorageHeader::MEM_SIZE_OFFSET + size_of::<usize>()];
-        mmap.write_all(new_size.to_le_bytes().as_ref())
-            .map_err(Error::UpdateHeader)
-    }
-
-    pub fn load_elements_count(&self) -> Result<usize, Error> {
-        let bytes = &self.mmap.as_ref()[StorageHeader::ELEMENTS_COUNT_OFFSET
-            ..StorageHeader::ELEMENTS_COUNT_OFFSET + size_of::<usize>()];
-        Ok(usize::from_le_bytes(
-            bytes.try_into().map_err(|_| Error::ReadHeader)?,
-        ))
-    }
-
-    pub fn store_elements_count(&mut self, new_size: usize) -> Result<(), Error> {
-        let mut mmap = &mut self.mmap.as_mut()[StorageHeader::ELEMENTS_COUNT_OFFSET
-            ..StorageHeader::ELEMENTS_COUNT_OFFSET + size_of::<usize>()];
         mmap.write_all(new_size.to_le_bytes().as_ref())
             .map_err(Error::UpdateHeader)
     }
@@ -112,34 +95,6 @@ struct Storage {
 pub struct GrowableMmap {
     storage: RwLock<Storage>,
     file: Option<File>,
-}
-
-impl Drop for GrowableMmap {
-    fn drop(&mut self) {
-        let mut storage_guard = self.storage.write().unwrap();
-        let (size_add, elements_add) = storage_guard
-            .active_map
-            .as_ref()
-            .map(|active_map| {
-                active_map.mmap.flush().unwrap();
-                (
-                    active_map.bounds.current_mmap_size(),
-                    active_map.bounds.elements_count(),
-                )
-            })
-            .unwrap_or((0, 0));
-        let storage_current_size = storage_guard.header.load_storage_size().unwrap();
-        storage_guard
-            .header
-            .store_storage_size(size_add + storage_current_size)
-            .unwrap();
-        let storage_current_elements_count = storage_guard.header.load_elements_count().unwrap();
-        storage_guard
-            .header
-            .store_elements_count(elements_add + storage_current_elements_count)
-            .unwrap();
-        storage_guard.header.flush().unwrap();
-    }
 }
 
 impl GrowableMmap {
@@ -188,14 +143,6 @@ impl GrowableMmap {
             .load_storage_size()
     }
 
-    pub fn elements_count(&self) -> Result<usize, Error> {
-        self.storage
-            .read()
-            .map_err(|_| Error::StorageLock)?
-            .header
-            .load_elements_count()
-    }
-
     pub fn grow_and_apply<F>(&self, add: usize, f: F) -> Result<(), Error>
     where
         F: Fn(&mut [u8]) -> Result<(), Error>,
@@ -207,87 +154,76 @@ impl GrowableMmap {
             .write()
             .map_err(|_| -> Error { Error::StorageLock })?;
 
-        let (start_write_from, add_to_storage_size, add_to_elements_count) =
-            match &mut storage_guard.active_map {
-                None => {
-                    let new_mmap_size = self.get_new_mmap_size(add, None);
-                    // header + inactive size
-                    let already_mapped = StorageHeader::HEADER_SIZE
-                        + storage_guard.inactive_mmaps.index.memory_size();
+        let start_write_from = match &mut storage_guard.active_map {
+            None => {
+                let new_mmap_size = self.get_new_mmap_size(add, None);
+                // header + inactive size
+                let already_mapped =
+                    StorageHeader::HEADER_SIZE + storage_guard.inactive_mmaps.index.memory_size();
 
-                    // create mmap and flush
-                    let new_mmap = self.create_mmap(new_mmap_size, already_mapped)?;
+                // create mmap and flush
+                let new_mmap = self.create_mmap(new_mmap_size, already_mapped)?;
 
-                    // create index on active mmap
-                    let mut single_mmap_index =
+                // create index on active mmap
+                let mut single_mmap_index =
+                    SingleMmapIndex::new(already_mapped - StorageHeader::HEADER_SIZE);
+                single_mmap_index.append(add);
+
+                storage_guard.active_map = Some(ActiveMmap {
+                    len: new_mmap_size,
+                    mmap: new_mmap,
+                    bounds: single_mmap_index,
+                });
+
+                0usize
+            }
+            Some(active_mmap) => {
+                let current_mmap_end = active_mmap.bounds.current_mmap_size();
+
+                // if we have enough space use active mmap
+                if current_mmap_end + add < active_mmap.len {
+                    active_mmap.bounds.append(current_mmap_end + add);
+                    current_mmap_end
+                } else {
+                    let new_mmap_size = self.get_new_mmap_size(add, Some(active_mmap.len));
+                    // offset is header + inactive part + current active part
+                    let already_mapped =
+                        StorageHeader::HEADER_SIZE + active_mmap.bounds.last_global_index();
+
+                    let mut new_mmap = self.create_mmap(new_mmap_size, already_mapped)?;
+
+                    // replace active mmap with new mmap
+                    swap(&mut new_mmap, &mut active_mmap.mmap);
+                    active_mmap.len = new_mmap_size;
+
+                    let mut new_bounds =
                         SingleMmapIndex::new(already_mapped - StorageHeader::HEADER_SIZE);
-                    single_mmap_index.append(add);
+                    new_bounds.append(add);
+                    swap(&mut new_bounds, &mut active_mmap.bounds);
 
-                    storage_guard.active_map = Some(ActiveMmap {
-                        len: new_mmap_size,
-                        mmap: new_mmap,
-                        bounds: single_mmap_index,
-                    });
+                    // add old replaced active mmap to inactive mmaps
+                    storage_guard.inactive_mmaps.index.add_mmap(new_bounds);
+                    storage_guard.inactive_mmaps.maps.push(
+                        SharedMmap::new(new_mmap.make_read_only().map_err(Error::Protect)?)
+                            .slice(..current_mmap_end),
+                    );
 
-                    (0usize, 0usize, 0usize)
+                    0usize
                 }
-                Some(active_mmap) => {
-                    let current_mmap_end = active_mmap.bounds.current_mmap_size();
-
-                    // if we have enough space use active mmap
-                    if current_mmap_end + add < active_mmap.len {
-                        active_mmap.bounds.append(current_mmap_end + add);
-                        (current_mmap_end, 0usize, 0usize)
-                    } else {
-                        active_mmap.mmap.flush().map_err(Error::Flush)?;
-
-                        let new_mmap_size = self.get_new_mmap_size(add, Some(active_mmap.len));
-                        // offset is header + inactive part + current active part
-                        let already_mapped =
-                            StorageHeader::HEADER_SIZE + active_mmap.bounds.last_global_index();
-
-                        let mut new_mmap = self.create_mmap(new_mmap_size, already_mapped)?;
-
-                        // replace active mmap with new mmap
-                        swap(&mut new_mmap, &mut active_mmap.mmap);
-                        active_mmap.len = new_mmap_size;
-
-                        let elements_in_active_mmap = active_mmap.bounds.elements_count();
-
-                        let mut new_bounds =
-                            SingleMmapIndex::new(already_mapped - StorageHeader::HEADER_SIZE);
-                        new_bounds.append(add);
-                        swap(&mut new_bounds, &mut active_mmap.bounds);
-
-                        // add old replaced active mmap to inactive mmaps
-                        storage_guard.inactive_mmaps.index.add_mmap(new_bounds);
-                        storage_guard.inactive_mmaps.maps.push(
-                            SharedMmap::new(new_mmap.make_read_only().map_err(Error::Protect)?)
-                                .slice(..current_mmap_end),
-                        );
-
-                        (0usize, current_mmap_end, elements_in_active_mmap)
-                    }
-                }
-            };
-
-        if add_to_storage_size > 0 {
-            let storage_size = storage_guard.header.load_storage_size()?;
-            storage_guard
-                .header
-                .store_storage_size(storage_size + add_to_storage_size)?;
-
-            let elements_count = storage_guard.header.load_elements_count()?;
-            storage_guard
-                .header
-                .store_elements_count(elements_count + add_to_elements_count)?;
-
-            storage_guard.header.flush()?;
-        }
-
+            }
+        };
         match storage_guard.active_map.as_mut() {
             None => Err(Error::DataFileDamaged),
-            Some(active_mmap) => f(&mut active_mmap.mmap.as_mut()[start_write_from..]),
+            Some(active_mmap) => {
+                f(&mut active_mmap.mmap.as_mut()[start_write_from..])?;
+                active_mmap.mmap.flush().map_err(Error::Flush)?;
+
+                let storage_size = storage_guard.header.load_storage_size()?;
+                storage_guard
+                    .header
+                    .store_storage_size(storage_size + add)?;
+                storage_guard.header.flush()
+            }
         }
     }
 

@@ -64,10 +64,6 @@ impl FlatFile {
     pub fn memory_size(&self) -> usize {
         self.inner.memory_size()
     }
-
-    pub fn elements_count(&self) -> Result<usize, Error> {
-        self.inner.elements_count()
-    }
 }
 
 #[cfg(test)]

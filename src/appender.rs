@@ -83,11 +83,6 @@ impl Appender {
     pub fn memory_size(&self) -> usize {
         self.actual_size.load(Ordering::SeqCst)
     }
-
-    pub fn elements_count(&self) -> Result<usize, Error> {
-        let mmap = unsafe { self.mmap.get().as_ref().unwrap() };
-        mmap.elements_count()
-    }
 }
 
 unsafe impl Sync for Appender {}

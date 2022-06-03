@@ -30,13 +30,6 @@ impl SingleMmapIndex {
         self.internal_bounds.push(end);
     }
 
-    pub fn elements_count(&self) -> usize {
-        if self.is_empty() {
-            return 0;
-        }
-        self.internal_bounds.len() - 1
-    }
-
     pub fn is_empty(&self) -> bool {
         self.last_global_index() == 0
     }
@@ -150,7 +143,6 @@ mod tests {
             for sub_item in item {
                 single_mmap_index.append(*sub_item - index.memory_size());
             }
-            assert_eq!(single_mmap_index.elements_count(), item.len());
             index.add_mmap(single_mmap_index);
         }
         assert_eq!(index.memory_size(), 420);
