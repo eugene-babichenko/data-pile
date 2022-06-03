@@ -20,7 +20,7 @@ impl SeqNoIter {
             .index
             .get_pointer_to_value(self.seqno + 1)
             .map(|value| value as usize)
-            .unwrap_or_else(|| self.data.len());
+            .unwrap_or_else(|| self.data.memory_size());
         let length = next_offset - offset;
         let item = self.data.get_record_at_offset(offset, length)?;
         self.seqno += 1;

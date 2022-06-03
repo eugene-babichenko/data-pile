@@ -60,7 +60,12 @@ impl Database {
         writable: bool,
     ) -> Result<Self, Error> {
         let flatfile = Arc::new(FlatFile::new(flatfile_path, writable)?);
+        let flatfile_elements = flatfile.elements_count()?;
+
         let seqno_index = Arc::new(SeqNoIndex::new(seqno_index_path, writable)?);
+        if seqno_index.size() != flatfile_elements {
+            return Err(Error::SeqNoIndexDamaged);
+        }
 
         let write_lock = Arc::new(Mutex::new(()));
 
@@ -86,7 +91,7 @@ impl Database {
 
         let _write_guard = self.write_lock.lock().unwrap();
 
-        let initial_size = self.flatfile.len();
+        let initial_size = self.flatfile.memory_size();
 
         let mut seqno_index_update = Vec::with_capacity(records.len());
         let mut offset = initial_size;
@@ -114,7 +119,7 @@ impl Database {
             .seqno_index
             .get_pointer_to_value(seqno + 1)
             .map(|value| value as usize)
-            .unwrap_or_else(|| self.flatfile.len());
+            .unwrap_or_else(|| self.flatfile.memory_size());
         let length = next_offset - offset;
         self.flatfile.get_record_at_offset(offset, length)
     }
@@ -299,7 +304,7 @@ mod tests {
     #[test]
     fn backup_test_storage() {
         let one_record_size = 1024;
-        let records = 20000;
+        let records = 200000;
 
         let tmp = tempfile::tempdir().unwrap();
         for iteration in 0..5 {
@@ -314,7 +319,7 @@ mod tests {
         let db = Database::file(tmp.path()).unwrap();
 
         let one_record_size = 1024;
-        let records = 100000;
+        let records = 1000000;
         big_write_test(db, one_record_size, records);
     }
 }

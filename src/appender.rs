@@ -43,7 +43,7 @@ impl Appender {
         };
 
         let mmap = UnsafeCell::new(GrowableMmap::new(file)?);
-        let actual_size = AtomicUsize::from(unsafe { mmap.get().as_ref().unwrap().data_size() }?);
+        let actual_size = AtomicUsize::from(unsafe { mmap.get().as_ref().unwrap().memory_size() }?);
 
         Ok(Self { mmap, actual_size })
     }
@@ -80,8 +80,13 @@ impl Appender {
         mmap.get_ref_and_apply(offset, f)
     }
 
-    pub fn size(&self) -> usize {
+    pub fn memory_size(&self) -> usize {
         self.actual_size.load(Ordering::SeqCst)
+    }
+
+    pub fn elements_count(&self) -> Result<usize, Error> {
+        let mmap = unsafe { self.mmap.get().as_ref().unwrap() };
+        mmap.elements_count()
     }
 }
 

@@ -61,8 +61,12 @@ impl FlatFile {
         })
     }
 
-    pub fn len(&self) -> usize {
-        self.inner.size()
+    pub fn memory_size(&self) -> usize {
+        self.inner.memory_size()
+    }
+
+    pub fn elements_count(&self) -> Result<usize, Error> {
+        self.inner.elements_count()
     }
 }
 

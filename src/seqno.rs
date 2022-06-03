@@ -24,7 +24,7 @@ impl SeqNoIndex {
         }
 
         let size_inc: usize = records.len() * size_of::<u64>();
-        let current_seqno = self.inner.size() / size_of::<u64>();
+        let current_seqno = self.inner.memory_size() / size_of::<u64>();
 
         self.inner.append(size_inc, move |mut mmap| {
             for record in records {
@@ -50,7 +50,7 @@ impl SeqNoIndex {
     }
 
     pub fn size(&self) -> usize {
-        self.inner.size() / size_of::<u64>()
+        self.inner.memory_size() / size_of::<u64>()
     }
 }
 
