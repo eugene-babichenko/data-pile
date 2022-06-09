@@ -13,7 +13,7 @@ struct StorageHeader {
 }
 
 impl StorageHeader {
-    pub const HEADER_SIZE: usize = size_of::<usize>() * 2;
+    pub const HEADER_SIZE: usize = 4096; // page size
 
     const MEM_SIZE_OFFSET: usize = 0;
 
@@ -181,7 +181,7 @@ impl GrowableMmap {
                 let current_mmap_end = active_mmap.bounds.current_mmap_size();
 
                 // if we have enough space use active mmap
-                if current_mmap_end + add < active_mmap.len {
+                if current_mmap_end + add <= active_mmap.len {
                     active_mmap.bounds.append(current_mmap_end + add);
                     current_mmap_end
                 } else {
@@ -216,7 +216,10 @@ impl GrowableMmap {
             None => Err(Error::DataFileDamaged),
             Some(active_mmap) => {
                 f(&mut active_mmap.mmap.as_mut()[start_write_from..])?;
-                active_mmap.mmap.flush().map_err(Error::Flush)?;
+                active_mmap
+                    .mmap
+                    .flush_range(start_write_from, add)
+                    .map_err(Error::Flush)?;
 
                 let storage_size = storage_guard.header.load_storage_size()?;
                 storage_guard
@@ -267,8 +270,8 @@ impl GrowableMmap {
         match self.file {
             None => add,
             Some(_) => {
-                let active_mmap = active_mmap_size.unwrap_or(2048);
-                max(add, min(active_mmap * 2, 4096 * 4096))
+                let active_mmap = active_mmap_size.unwrap_or(32 * 1024); // 4 megabytes
+                max(add, min(active_mmap * 2, 4 * 1024 * 1024))
             }
         }
     }

@@ -308,8 +308,8 @@ mod tests {
 
     #[test]
     fn backup_test_storage() {
-        let one_record_size = 1024;
-        let records = 10000;
+        let one_record_size = 256;
+        let records = 1000;
 
         let tmp = tempfile::tempdir().unwrap();
         for iteration in 0..5 {
@@ -323,8 +323,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let db = Database::file(tmp.path()).unwrap();
 
-        let one_record_size = 1024;
-        let records = 50000;
+        let one_record_size = 256;
+        let records = 5000;
         big_write_test(db, one_record_size, records);
     }
 }
