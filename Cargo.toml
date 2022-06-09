@@ -13,7 +13,7 @@ keywords = ["append-only", "key-value", "storage", "database"]
 categories = ["database"]
 
 [dependencies]
-memmap2 = "0.2.1"
+memmap2 = "0.5.4"
 
 [dev-dependencies]
 tempfile = "3.1"

@@ -12,8 +12,8 @@ impl SeqNoIndex {
     /// # Arguments
     ///
     /// * `path` - the path to the file. It will be created if not exists.
-    pub fn new(path: Option<PathBuf>) -> Result<Self, Error> {
-        Appender::new(path).map(|inner| Self { inner })
+    pub fn new(path: Option<PathBuf>, writable: bool) -> Result<Self, Error> {
+        Appender::new(path, writable).map(|inner| Self { inner })
     }
 
     /// Add records to index. This function will block if another write is still
@@ -24,13 +24,14 @@ impl SeqNoIndex {
         }
 
         let size_inc: usize = records.len() * size_of::<u64>();
-        let current_seqno = self.inner.size() / size_of::<u64>();
+        let current_seqno = self.inner.memory_size() / size_of::<u64>();
 
         self.inner.append(size_inc, move |mut mmap| {
             for record in records {
                 mmap[..size_of::<u64>()].copy_from_slice(&record.to_le_bytes()[..]);
                 mmap = &mut mmap[size_of::<u64>()..];
             }
+            Ok(())
         })?;
 
         Ok(Some(current_seqno))
@@ -42,14 +43,14 @@ impl SeqNoIndex {
 
         self.inner.get_data(offset, |mmap| {
             let mut key_length_bytes = [0u8; size_of::<u64>()];
-            key_length_bytes.copy_from_slice(&mmap.as_ref()[..size_of::<u64>()]);
+            key_length_bytes.copy_from_slice(&mmap[..size_of::<u64>()]);
 
             Some(u64::from_le_bytes(key_length_bytes))
         })
     }
 
     pub fn size(&self) -> usize {
-        self.inner.size() / size_of::<u64>()
+        self.inner.memory_size() / size_of::<u64>()
     }
 }
 
@@ -65,7 +66,7 @@ mod tests {
 
         let tmp = tempfile::NamedTempFile::new().unwrap();
 
-        let index = SeqNoIndex::new(Some(tmp.path().to_path_buf())).unwrap();
+        let index = SeqNoIndex::new(Some(tmp.path().to_path_buf()), true).unwrap();
         index.append(&records).unwrap();
 
         for (i, record) in records.iter().enumerate() {
@@ -78,7 +79,7 @@ mod tests {
     fn test_seq_number(records: Vec<u64>) {
         let tmp = tempfile::NamedTempFile::new().unwrap();
 
-        let index = SeqNoIndex::new(Some(tmp.path().to_path_buf())).unwrap();
+        let index = SeqNoIndex::new(Some(tmp.path().to_path_buf()), true).unwrap();
         let checks_count = 100usize;
         for i in 0..checks_count {
             let result = index.append(&records).unwrap();

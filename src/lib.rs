@@ -21,13 +21,14 @@
 #[cfg(test)]
 #[macro_use(quickcheck)]
 extern crate quickcheck_macros;
+extern crate core;
 
 mod appender;
 mod database;
 mod error;
 mod flatfile;
 mod growable_mmap;
-mod page_index;
+mod index_on_mmaps;
 mod seqno;
 mod seqno_iter;
 mod shared_mmap;

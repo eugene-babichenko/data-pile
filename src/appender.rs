@@ -1,6 +1,6 @@
 //! Appenders are mmap'ed files intended for append-only use.
 
-use crate::{growable_mmap::GrowableMmap, Error, SharedMmap};
+use crate::{growable_mmap::GrowableMmap, Error};
 use std::{
     cell::UnsafeCell,
     fs::OpenOptions,
@@ -25,30 +25,25 @@ impl Appender {
     /// # Arguments
     ///
     /// * `path` - the path to the file. It will be created if not exists.
-    /// * `map_size` - the size of the memory map that will be used. This map
-    ///   limits the size of the file. If the `map_size` is smaller than the
-    ///   size of the file, an error will be returned.
-    pub fn new(path: Option<PathBuf>) -> Result<Self, Error> {
-        let (file, actual_size) = if let Some(path) = path {
-            let file = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
+    /// * `writable` - flag that indicates whether the storage is read-only
+    pub fn new(path: Option<PathBuf>, writable: bool) -> Result<Self, Error> {
+        let file = if let Some(path) = path {
+            let mut options = OpenOptions::new();
+            options.read(true);
+            if writable {
+                options.write(true).create(true);
+            };
+            let file = options
                 .open(&path)
                 .map_err(|err| Error::FileOpen(path.clone(), err))?;
 
-            let actual_size = file
-                .metadata()
-                .map_err(|err| Error::FileOpen(path.clone(), err))?
-                .len() as usize;
-
-            (Some(file), actual_size)
+            Some(file)
         } else {
-            (None, 0)
+            None
         };
 
         let mmap = UnsafeCell::new(GrowableMmap::new(file)?);
-        let actual_size = AtomicUsize::from(actual_size);
+        let actual_size = AtomicUsize::from(unsafe { mmap.get().as_ref().unwrap().memory_size() }?);
 
         Ok(Self { mmap, actual_size })
     }
@@ -58,22 +53,19 @@ impl Appender {
     /// another write is in progress.
     pub fn append<F>(&self, size_inc: usize, f: F) -> Result<(), Error>
     where
-        F: Fn(&mut [u8]),
+        F: Fn(&mut [u8]) -> Result<(), Error>,
     {
         if size_inc == 0 {
             return Ok(());
         }
 
         let mmap = unsafe { self.mmap.get().as_mut().unwrap() };
-        let actual_size = self.actual_size.load(Ordering::Relaxed);
+        let actual_size = self.actual_size.load(Ordering::SeqCst);
 
         let new_file_size = actual_size + size_inc;
 
-        let mut page = mmap.grow(size_inc)?;
-        f(page.as_mut());
-        mmap.append_page(page)?;
-
-        self.actual_size.store(new_file_size, Ordering::Release);
+        mmap.grow_and_apply(size_inc, f)?;
+        self.actual_size.store(new_file_size, Ordering::SeqCst);
 
         Ok(())
     }
@@ -82,14 +74,14 @@ impl Appender {
     /// or return None if something went wrong.
     pub fn get_data<F, U>(&self, offset: usize, f: F) -> Option<U>
     where
-        F: Fn(SharedMmap) -> Option<U>,
+        F: Fn(&[u8]) -> Option<U>,
     {
         let mmap = unsafe { self.mmap.get().as_ref().unwrap() };
-        mmap.get_ref(offset).and_then(f)
+        mmap.get_ref_and_apply(offset, f)
     }
 
-    pub fn size(&self) -> usize {
-        self.actual_size.load(Ordering::Acquire)
+    pub fn memory_size(&self) -> usize {
+        self.actual_size.load(Ordering::SeqCst)
     }
 }
 
